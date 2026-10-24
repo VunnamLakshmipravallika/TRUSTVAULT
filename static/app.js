@@ -212,6 +212,53 @@ async function toggleActivity(event) {
 }
 document.querySelector("#activity-link")?.addEventListener("click", toggleActivity);
 document.querySelector("#activity-open")?.addEventListener("click", toggleActivity);
+async function toggleAdminAccountRequests(event) {
+  event.preventDefault();
+  const panel = document.querySelector("#admin-account-requests");
+  panel.classList.remove("hidden");
+  await loadAdminAccountRequests();
+}
+async function loadAdminAccountRequests() {
+  const tbody = document.querySelector("#admin-account-requests-events");
+  const empty = document.querySelector("#admin-account-requests-empty");
+  tbody.innerHTML = `<tr><td colspan="4">Loading account requests…</td></tr>`;
+  empty.classList.add("hidden");
+  try {
+    const {requests} = await api("/api/admin/account-requests");
+    tbody.innerHTML = "";
+    empty.classList.toggle("hidden", requests.length !== 0);
+    for (const request of requests) {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${escapeHtml(request.username)}</td>
+        <td>${escapeHtml(request.display_name)}</td>
+        <td>${escapeHtml(new Date(request.created_at).toLocaleString())}</td>
+        <td><div class="admin-request-actions">
+          <button class="button primary" type="button" data-account-request="${request.id}" data-decision="approve">Approve</button>
+          <button class="button outline danger" type="button" data-account-request="${request.id}" data-decision="reject">Reject</button>
+        </div></td>`;
+      tbody.append(row);
+    }
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="4">${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+document.querySelector("#admin-account-requests-link")?.addEventListener("click", toggleAdminAccountRequests);
+document.querySelector("#admin-account-requests-open")?.addEventListener("click", toggleAdminAccountRequests);
+document.querySelector("#admin-account-requests-refresh")?.addEventListener("click", loadAdminAccountRequests);
+document.querySelector("#admin-account-requests-events")?.addEventListener("click", async event => {
+  const button = event.target.closest("button[data-account-request][data-decision]");
+  if (!button) return;
+  button.disabled = true;
+  const {accountRequest, decision} = button.dataset;
+  try {
+    const result = await api(`/api/admin/account-requests/${accountRequest}/${decision}`, {method: "POST"});
+    toast(decision === "approve" ? `${result.username} is now an administrator.` : `${result.username}'s request was rejected.`);
+    await loadAdminAccountRequests();
+  } catch (error) {
+    button.disabled = false;
+    toast(error.message);
+  }
+});
 async function toggleUserLoginActivity(event) {
   event.preventDefault();
   const panel = document.querySelector("#user-login-activity");

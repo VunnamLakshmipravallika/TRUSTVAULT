@@ -9,20 +9,33 @@
     <section class="auth-visual">
       <a class="auth-brand" href="/"><span class="brand-mark">T</span><span>TrustVault</span></a>
       <div class="auth-art" aria-hidden="true"><span class="art-orbit"></span><span class="art-lock">✓</span><span class="art-file">PRIVATE<br>DOCUMENT</span></div>
-      <div class="auth-message"><p class="eyebrow">ACCESS, BY INVITATION</p><h2>Your files.<br>Your rules.</h2><p>Create a viewer account. Document access is granted individually by each owner.</p></div>
-      <div class="auth-proof"><span>VIEWER</span> Private by default <span>OWNER-GRANTED</span></div>
+      <div class="auth-message"><p class="eyebrow">ACCESS, BY INVITATION</p><h2>Your files.<br>Your rules.</h2><p>Choose Viewer for immediate signup, or request Admin access for approval.</p></div>
+      <div class="auth-proof"><span>ROLE-BASED</span> Private by default <span>OWNER-GRANTED</span></div>
     </section>
     <section class="auth-content">
       <div class="auth-mobile-brand"><span class="brand-mark">T</span><span>TrustVault</span></div>
       <p class="eyebrow">JOIN TRUSTVAULT</p>
-      <h1>Create an account</h1><p class="muted">New accounts start as viewers. Owners grant access to documents individually.</p>
+      <h1>Create an account</h1><p class="muted">Choose Viewer for immediate access to your account, or request Admin access for approval.</p>
       <form id="register-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <fieldset class="role-choice signup-role-choice">
+          <legend>Choose an account type</legend>
+          <label>
+            <input type="radio" name="requested_role" value="viewer" checked>
+            <span class="role-option-title">Viewer</span>
+            <small>Available immediately. Document access is granted by each owner.</small>
+          </label>
+          <label>
+            <input type="radio" name="requested_role" value="admin">
+            <span class="role-option-title">Admin</span>
+            <small>Requires approval from an existing administrator before sign-in.</small>
+          </label>
+        </fieldset>
         <label>Display name<input name="display_name" autocomplete="name" maxlength="80" required placeholder="Your name"></label>
         <label>Username<input name="username" autocomplete="username" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{2,31}" required placeholder="Choose a username"></label>
         <label>Password<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="At least 12 characters"></label>
         <label>Confirm password<input name="password_confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="Enter your password again"></label>
-        <button class="button primary full" type="submit">Create viewer account <span>→</span></button>
+        <button class="button primary full" id="register-submit" type="submit">Create viewer account <span>→</span></button>
         <p class="error" id="register-error" role="alert"></p>
       </form>
       <p class="auth-switch">Already registered? <a href="/">Sign in</a></p>
@@ -46,18 +59,26 @@
             display_name: form.display_name.value,
             username: form.username.value,
             password: form.password.value,
-            password_confirmation: form.password_confirmation.value
+            password_confirmation: form.password_confirmation.value,
+            requested_role: form.requested_role.value
           })
         });
         const result = await response.json();
         if (response.ok) {
-          location.href = "/?registered=1";
+          location.href = response.status === 202 ? "/?registered=admin-pending" : "/?registered=viewer";
           return;
         }
         error.textContent = result.error || "Account creation failed.";
       } catch (_error) {
         error.textContent = "Could not reach TrustVault. Check your connection and try again.";
       }
+    });
+    form.querySelectorAll('input[name="requested_role"]').forEach((radio) => {
+      radio.addEventListener("change", () => {
+        document.querySelector("#register-submit").innerHTML = radio.value === "admin" && radio.checked
+          ? "Request admin access <span>→</span>"
+          : "Create viewer account <span>→</span>";
+      });
     });
   </script>
 </body>

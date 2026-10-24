@@ -35,9 +35,17 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
             ("admin", "admin", "adminpass"),
         ]:
             connection.execute(
-                """INSERT INTO users(username, display_name, role, password_hash, created_at, email)
-                   VALUES (?, ?, ?, ?, '2026-10-20', ?)""",
-                (username, username.title(), role, generate_password_hash(password), f"{username}@example.test"),
+                """INSERT INTO users
+                   (username, display_name, role, password_hash, created_at, email, requested_role, account_status)
+                   VALUES (?, ?, ?, ?, '2026-10-20', ?, ?, 'active')""",
+                (
+                    username,
+                    username.title(),
+                    role,
+                    generate_password_hash(password),
+                    f"{username}@example.test",
+                    role,
+                ),
             )
         connection.execute(
             "UPDATE users SET email = ? WHERE username = ?",
@@ -119,10 +127,13 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
 
         with trustvault.app.app_context():
             account = trustvault.db().execute(
-                "SELECT username, display_name, role, password_hash FROM users WHERE username = ?",
+                """SELECT username, display_name, role, password_hash, account_status, requested_role
+                   FROM users WHERE username = ?""",
                 ("newviewer",),
             ).fetchone()
             self.assertEqual(account["role"], "viewer")
+            self.assertEqual(account["account_status"], "active")
+            self.assertEqual(account["requested_role"], "viewer")
             self.assertTrue(trustvault.check_password_hash(account["password_hash"], "a-long-password-123"))
             self.assertTrue(trustvault.verify_audit_chain())
             self.assertEqual(
@@ -140,6 +151,157 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         )
         self.assertEqual(login_response.status_code, 200)
         self.assertTrue(login_response.json["identity_required"])
+
+    def test_admin_registration_stays_pending_until_admin_approves(self):
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "test-csrf"
+        password = "pending-admin-password"
+        registration = self.client.post(
+            "/api/register",
+            json={
+                "username": "admin-applicant",
+                "display_name": "Admin Applicant",
+                "password": password,
+                "password_confirmation": password,
+                "requested_role": "admin",
+                "role": "owner",
+            },
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(registration.status_code, 202)
+        self.assertTrue(registration.json["pending_approval"])
+        self.assertEqual(registration.json["user"]["role"], "viewer")
+        self.assertEqual(registration.json["user"]["account_status"], "pending")
+
+        with trustvault.app.app_context():
+            applicant = trustvault.db().execute(
+                "SELECT id, role, requested_role, account_status FROM users WHERE username = ?",
+                ("admin-applicant",),
+            ).fetchone()
+            self.assertEqual(
+                (applicant["role"], applicant["requested_role"], applicant["account_status"]),
+                ("viewer", "admin", "pending"),
+            )
+            self.assertEqual(
+                trustvault.db().execute(
+                    "SELECT COUNT(*) FROM permissions WHERE user_id = ?", (applicant["id"],)
+                ).fetchone()[0],
+                0,
+            )
+
+        blocked_login = self.client.post(
+            "/api/login",
+            json={"username": "admin-applicant", "password": password, "role": "admin"},
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(blocked_login.status_code, 403)
+        self.assertEqual(blocked_login.json["error"], "account_pending_approval")
+
+        admin_client = trustvault.app.test_client()
+        with admin_client.session_transaction() as session:
+            session["csrf_token"] = "admin-csrf"
+        admin_login = admin_client.post(
+            "/api/login",
+            json={"username": "admin", "password": "adminpass", "role": "admin"},
+            headers={"X-CSRF-Token": "admin-csrf"},
+        )
+        self.assertEqual(admin_login.status_code, 200)
+        admin_identity = admin_client.post(
+            "/api/session/user-id",
+            json={"user_id": "test-admin"},
+            headers={"X-CSRF-Token": admin_login.json["csrf_token"]},
+        )
+        self.assertEqual(admin_identity.status_code, 200)
+
+        requests = admin_client.get("/api/admin/account-requests")
+        self.assertEqual(requests.status_code, 200)
+        self.assertEqual([item["username"] for item in requests.json["requests"]], ["admin-applicant"])
+        request_id = requests.json["requests"][0]["id"]
+        approval_url = f"/api/admin/account-requests/{request_id}/approve"
+        rejected_csrf = admin_client.post(
+            approval_url,
+            headers={"X-CSRF-Token": "invalid"},
+        )
+        self.assertEqual(rejected_csrf.status_code, 403)
+        approved = admin_client.post(
+            approval_url,
+            headers={"X-CSRF-Token": admin_login.json["csrf_token"]},
+        )
+        self.assertEqual(approved.status_code, 200)
+
+        with trustvault.app.app_context():
+            approved_account = trustvault.db().execute(
+                "SELECT role, requested_role, account_status, reviewed_by FROM users WHERE id = ?",
+                (applicant["id"],),
+            ).fetchone()
+            self.assertEqual(approved_account["role"], "admin")
+            self.assertEqual(approved_account["requested_role"], "admin")
+            self.assertEqual(approved_account["account_status"], "active")
+            self.assertIsNotNone(approved_account["reviewed_by"])
+            self.assertTrue(trustvault.verify_audit_chain())
+
+        approved_login = self.client.post(
+            "/api/login",
+            json={"username": "admin-applicant", "password": password, "role": "admin"},
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(approved_login.status_code, 200)
+        self.assertTrue(approved_login.json["identity_required"])
+
+    def test_non_admin_cannot_review_admin_account_requests(self):
+        self.login("viewer", "viewerpass")
+        self.assertEqual(self.client.get("/api/admin/account-requests").status_code, 404)
+        response = self.client.post(
+            "/api/admin/account-requests/1/approve",
+            headers={"X-CSRF-Token": self.csrf()},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_rejected_admin_request_remains_unable_to_sign_in(self):
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "test-csrf"
+        password = "rejected-admin-password"
+        registration = self.client.post(
+            "/api/register",
+            json={
+                "username": "rejected-admin",
+                "display_name": "Rejected Admin",
+                "password": password,
+                "password_confirmation": password,
+                "requested_role": "admin",
+            },
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(registration.status_code, 202)
+
+        admin_client = trustvault.app.test_client()
+        with admin_client.session_transaction() as session:
+            session["csrf_token"] = "admin-csrf"
+        admin_login = admin_client.post(
+            "/api/login",
+            json={"username": "admin", "password": "adminpass", "role": "admin"},
+            headers={"X-CSRF-Token": "admin-csrf"},
+        )
+        self.assertEqual(admin_login.status_code, 200)
+        admin_client.post(
+            "/api/session/user-id",
+            json={"user_id": "test-admin"},
+            headers={"X-CSRF-Token": admin_login.json["csrf_token"]},
+        )
+        request_id = admin_client.get("/api/admin/account-requests").json["requests"][0]["id"]
+        rejected = admin_client.post(
+            f"/api/admin/account-requests/{request_id}/reject",
+            headers={"X-CSRF-Token": admin_login.json["csrf_token"]},
+        )
+        self.assertEqual(rejected.status_code, 200)
+
+        blocked_login = self.client.post(
+            "/api/login",
+            json={"username": "rejected-admin", "password": password, "role": "admin"},
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(blocked_login.status_code, 403)
+        self.assertEqual(blocked_login.json["error"], "account_inactive")
 
     def test_login_enforces_selected_role_and_single_owner_username(self):
         from werkzeug.security import generate_password_hash
@@ -279,6 +441,11 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(owner_page.status_code, 200)
         self.assertIn(b'value="pravallika"', owner_page.data)
         self.assertIn(b'name="role" value="owner"', owner_page.data)
+
+        registration_page = self.client.get("/register")
+        self.assertIn(b'name="requested_role" value="viewer"', registration_page.data)
+        self.assertIn(b'name="requested_role" value="admin"', registration_page.data)
+        self.assertIn(b"Requires approval from an existing administrator", registration_page.data)
 
     def test_authenticated_user_cannot_create_an_additional_account(self):
         self.login("owner", "ownerpass-test-123")

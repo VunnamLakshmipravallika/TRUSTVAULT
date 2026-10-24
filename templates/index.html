@@ -16,7 +16,10 @@
   <main class="layout">
     <aside class="sidebar">
       <p class="eyebrow">WORKSPACE</p><a class="nav-link active" href="/">▦ &nbsp; Documents</a>
-      {% if user.role == 'admin' %}<a class="nav-link" href="#activity" id="activity-link">◷ &nbsp; Activity log</a>{% endif %}
+      {% if user.role == 'admin' %}
+      <a class="nav-link" href="#activity" id="activity-link">◷ &nbsp; Activity log</a>
+      <a class="nav-link" href="#admin-account-requests" id="admin-account-requests-link">♙ &nbsp; Admin requests</a>
+      {% endif %}
       {% if user.role == 'owner' %}<a class="nav-link" href="#user-login-activity" id="user-login-activity-link">♙ &nbsp; User sign-ins</a>{% endif %}
       <section class="sidebar-note"><span class="shield">✓</span><b>Protected by design</b><p>Every file request is checked against its current document grant.</p></section>
     </aside>
@@ -25,6 +28,7 @@
       <p class="muted">{% if user.role == 'admin' %}You can review document metadata; file contents still require an explicit grant.{% else %}Only you and people explicitly granted access can see each file.{% endif %}</p></div>
       <div class="heading-actions">
         {% if user.role == 'admin' %}<button id="activity-open" class="button outline">◷ &nbsp; Activity log</button>{% endif %}
+        {% if user.role == 'admin' %}<button id="admin-account-requests-open" class="button outline">♙ &nbsp; Admin requests</button>{% endif %}
         {% if user.role == 'owner' %}<button id="user-login-activity-open" class="button outline">♙ &nbsp; User sign-ins</button>{% endif %}
         {% if user.role == 'owner' %}<button id="upload-open" class="button primary">＋ &nbsp; Upload document</button>{% endif %}
       </div></div>
@@ -57,7 +61,17 @@
         <tbody id="documents"></tbody></table>
         <div id="empty" class="empty hidden"><div>▤</div><b>No documents found</b><p>Upload a document or adjust your search.</p></div>
       </div>
-      {% if user.role == 'admin' %}<section id="activity" class="activity-panel hidden"><div class="panel-heading"><div><p class="eyebrow">ADMINISTRATION</p><h2>Activity log</h2></div><span id="chain-status" class="badge"></span></div><div id="activity-events"></div></section>{% endif %}
+      {% if user.role == 'admin' %}
+      <section id="activity" class="activity-panel hidden"><div class="panel-heading"><div><p class="eyebrow">ADMINISTRATION</p><h2>Activity log</h2></div><span id="chain-status" class="badge"></span></div><div id="activity-events"></div></section>
+      <section id="admin-account-requests" class="activity-panel hidden">
+        <div class="panel-heading"><div><p class="eyebrow">ADMINISTRATION</p><h2>Admin access requests</h2></div><button type="button" class="text-button" id="admin-account-requests-refresh">Refresh</button></div>
+        <p class="muted">Review each request before activating administrator privileges.</p>
+        <div class="table-wrap"><table><thead><tr><th>USERNAME</th><th>DISPLAY NAME</th><th>REQUESTED</th><th>DECISION</th></tr></thead>
+          <tbody id="admin-account-requests-events"></tbody></table>
+          <div id="admin-account-requests-empty" class="empty hidden"><b>No pending Admin requests</b></div>
+        </div>
+      </section>
+      {% endif %}
       {% if user.role == 'owner' %}
       <section id="user-login-activity" class="activity-panel hidden">
         <div class="panel-heading"><div><p class="eyebrow">OWNER VIEW</p><h2>Admin and viewer sign-ins</h2></div><button type="button" class="text-button" id="user-login-activity-refresh">Refresh</button></div>

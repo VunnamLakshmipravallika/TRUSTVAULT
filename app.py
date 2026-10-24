@@ -94,6 +94,15 @@ def initialize():
             connection.execute("ALTER TABLE users ADD COLUMN email TEXT")
         if "auth_version" not in user_columns:
             connection.execute("ALTER TABLE users ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 1")
+        if "requested_role" not in user_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN requested_role TEXT NOT NULL DEFAULT 'viewer'")
+        connection.execute("UPDATE users SET requested_role = role WHERE role IN ('admin', 'owner')")
+        if "account_status" not in user_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN account_status TEXT NOT NULL DEFAULT 'active'")
+        if "reviewed_by" not in user_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN reviewed_by INTEGER REFERENCES users(id)")
+        if "reviewed_at" not in user_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN reviewed_at TEXT")
         document_columns = {row[1] for row in connection.execute("PRAGMA table_info(documents)")}
         if "expires_at" not in document_columns:
             connection.execute("ALTER TABLE documents ADD COLUMN expires_at TEXT")
@@ -153,6 +162,8 @@ def configure_owner_account(connection, password):
     auth_version_increment = int(not password_matches or not identity_matches)
     connection.execute(
         """UPDATE users SET username = ?, display_name = ?, email = ?, role = 'owner',
+                  requested_role = 'owner', account_status = 'active',
+                  reviewed_by = NULL, reviewed_at = NULL,
                   password_hash = ?, auth_version = auth_version + ?
            WHERE id = ?""",
         (
@@ -325,10 +336,12 @@ def current_user():
     if not user_id:
         return None
     user = db().execute(
-        "SELECT id, username, display_name, role, auth_version FROM users WHERE id = ?",
+        """SELECT id, username, display_name, role, auth_version, account_status
+           FROM users WHERE id = ?""",
         (user_id,),
     ).fetchone()
-    if user is None or session.get("auth_version") != user["auth_version"]:
+    if (user is None or user["account_status"] != "active"
+            or session.get("auth_version") != user["auth_version"]):
         session.clear()
         return None
     return user
@@ -450,7 +463,7 @@ def home():
     return render_template(
         "login.html",
         csrf_token=session.setdefault("csrf_token", secrets.token_urlsafe(32)),
-        registered=request.args.get("registered") == "1",
+        registered=request.args.get("registered"),
     )
 
 
@@ -493,9 +506,20 @@ def login():
     ):
         return jsonify(error="invalid_credentials"), 401
     user = db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    if user is None or not check_password_hash(user["password_hash"], str(password)):
+        audit(None, "authentication.failed", details={"username": username[:120]})
+        return jsonify(error="invalid_credentials"), 401
+    if user["account_status"] != "active":
+        audit(
+            user["id"],
+            "authentication.blocked",
+            details={"status": user["account_status"], "requested_role": user["requested_role"]},
+        )
+        if user["account_status"] == "pending":
+            return jsonify(error="account_pending_approval"), 403
+        return jsonify(error="account_inactive"), 403
     owner_username = OWNER_USERNAME
-    if (user is None or not check_password_hash(user["password_hash"], str(password))
-            or (requested_role is not None and requested_role != user["role"])
+    if ((requested_role is not None and requested_role != user["role"])
             or (user is not None and user["role"] == "owner" and username != owner_username)):
         audit(None, "authentication.failed", details={"username": username[:120]})
         return jsonify(error="invalid_credentials"), 401
@@ -522,7 +546,10 @@ def register():
     display_name = data.get("display_name")
     password = data.get("password")
     password_confirmation = data.get("password_confirmation")
+    requested_role = data.get("requested_role", "viewer")
 
+    if not isinstance(requested_role, str) or requested_role not in {"admin", "viewer"}:
+        return jsonify(error="Choose either the Admin or Viewer account type."), 400
     if not isinstance(username, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{2,31}", username):
         return jsonify(error="Username must be 3–32 characters using letters, numbers, _ or -, and start with a letter or number."), 400
     if not isinstance(display_name, str):
@@ -538,18 +565,39 @@ def register():
     normalized_username = username.lower()
     if normalized_username == OWNER_USERNAME:
         return jsonify(error="That username is reserved for the TrustVault owner account."), 409
+    account_status = "pending" if requested_role == "admin" else "active"
     try:
         db().execute(
-            """INSERT INTO users(username, display_name, role, password_hash, created_at)
-               VALUES (?, ?, 'viewer', ?, ?)""",
-            (normalized_username, display_name, generate_password_hash(password), now()),
+            """INSERT INTO users
+               (username, display_name, role, password_hash, created_at, requested_role, account_status)
+               VALUES (?, ?, 'viewer', ?, ?, ?, ?)""",
+            (
+                normalized_username,
+                display_name,
+                generate_password_hash(password),
+                now(),
+                requested_role,
+                account_status,
+            ),
         )
-        audit(None, "account.registered", details={"username": normalized_username, "role": "viewer"})
+        action = "account.admin_access_requested" if requested_role == "admin" else "account.registered"
+        audit(None, action, details={"username": normalized_username, "requested_role": requested_role})
     except sqlite3.IntegrityError:
         db().rollback()
         return jsonify(error="That username is already in use."), 409
 
-    return jsonify(ok=True, user={"username": normalized_username, "display_name": display_name, "role": "viewer"}), 201
+    result = jsonify(
+        ok=True,
+        pending_approval=account_status == "pending",
+        user={
+            "username": normalized_username,
+            "display_name": display_name,
+            "role": "viewer",
+            "requested_role": requested_role,
+            "account_status": account_status,
+        },
+    )
+    return result, 202 if account_status == "pending" else 201
 
 
 @app.post("/api/session/user-id")
@@ -611,8 +659,11 @@ def users():
     user = current_user()
     if user["role"] != "owner":
         abort(404)
-    rows = db().execute("SELECT id, username, display_name, email, role FROM users WHERE id != ? ORDER BY username",
-                        (user["id"],)).fetchall()
+    rows = db().execute(
+        """SELECT id, username, display_name, email, role FROM users
+           WHERE id != ? AND account_status = 'active' ORDER BY username""",
+        (user["id"],),
+    ).fetchall()
     return jsonify(users=[dict(row) for row in rows])
 
 
@@ -879,7 +930,11 @@ def grant_permission(document_id):
     data = json_body()
     username = str(data.get("username", "")).strip().lower()
     permission = data.get("permission")
-    target = db().execute("SELECT id, username, display_name, email, role FROM users WHERE username = ?", (username,)).fetchone()
+    target = db().execute(
+        """SELECT id, username, display_name, email, role FROM users
+           WHERE username = ? AND account_status = 'active'""",
+        (username,),
+    ).fetchone()
     if target is None or target["id"] == user["id"]:
         return jsonify(error="user_not_found"), 404
     if permission not in {"read", "edit"}:
@@ -944,6 +999,70 @@ def admin_audit():
            ORDER BY a.sequence DESC LIMIT 100 OFFSET ?""", ((page - 1) * 100,)
     ).fetchall()
     return jsonify(events=[dict(row) for row in rows], chain_valid=verify_audit_chain())
+
+
+@app.get("/api/admin/account-requests")
+@require_admin
+def admin_account_requests():
+    rows = db().execute(
+        """SELECT id, username, display_name, created_at, requested_role
+           FROM users WHERE account_status = 'pending' AND requested_role = 'admin'
+           ORDER BY created_at, id"""
+    ).fetchall()
+    response = jsonify(requests=[dict(row) for row in rows])
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@app.post("/api/admin/account-requests/<int:account_id>/approve")
+@require_admin
+@csrf_protect
+def approve_admin_account_request(account_id):
+    user = current_user()
+    connection = db()
+    connection.execute("BEGIN IMMEDIATE")
+    account = connection.execute(
+        """SELECT id, username FROM users
+           WHERE id = ? AND account_status = 'pending' AND requested_role = 'admin'""",
+        (account_id,),
+    ).fetchone()
+    if account is None:
+        connection.rollback()
+        return jsonify(error="request_not_found"), 404
+    reviewed_at = now()
+    connection.execute(
+        """UPDATE users SET role = 'admin', account_status = 'active',
+                  reviewed_by = ?, reviewed_at = ?, auth_version = auth_version + 1
+           WHERE id = ? AND account_status = 'pending' AND requested_role = 'admin'""",
+        (user["id"], reviewed_at, account_id),
+    )
+    audit(user["id"], "account.admin_access_approved", details={"username": account["username"]})
+    return jsonify(ok=True, username=account["username"], role="admin", reviewed_at=reviewed_at)
+
+
+@app.post("/api/admin/account-requests/<int:account_id>/reject")
+@require_admin
+@csrf_protect
+def reject_admin_account_request(account_id):
+    user = current_user()
+    connection = db()
+    connection.execute("BEGIN IMMEDIATE")
+    account = connection.execute(
+        """SELECT id, username FROM users
+           WHERE id = ? AND account_status = 'pending' AND requested_role = 'admin'""",
+        (account_id,),
+    ).fetchone()
+    if account is None:
+        connection.rollback()
+        return jsonify(error="request_not_found"), 404
+    connection.execute(
+        """UPDATE users SET account_status = 'rejected', reviewed_by = ?, reviewed_at = ?,
+                  auth_version = auth_version + 1
+           WHERE id = ? AND account_status = 'pending' AND requested_role = 'admin'""",
+        (user["id"], now(), account_id),
+    )
+    audit(user["id"], "account.admin_access_rejected", details={"username": account["username"]})
+    return jsonify(ok=True, username=account["username"])
 
 
 @app.get("/api/owner/login-activity")
@@ -1088,9 +1207,10 @@ def seed():
     for username, display_name, role, password, default_email in users:
         email = os.environ.get(f"TRUSTVAULT_EMAIL_{username.upper()}", default_email).strip().lower()
         connection.execute(
-            """INSERT OR IGNORE INTO users(username, display_name, role, password_hash, created_at, email)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (username, display_name, role, generate_password_hash(password), now(), email),
+            """INSERT OR IGNORE INTO users
+               (username, display_name, role, password_hash, created_at, email, requested_role, account_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'active')""",
+            (username, display_name, role, generate_password_hash(password), now(), email, role),
         )
         configured_email = os.environ.get(f"TRUSTVAULT_EMAIL_{username.upper()}")
         if configured_email:

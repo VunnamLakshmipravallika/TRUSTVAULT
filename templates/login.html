@@ -16,7 +16,8 @@
       <div class="auth-mobile-brand"><span class="brand-mark">T</span><span>TrustVault</span></div>
       <p class="eyebrow">PRIVATE DOCUMENT WORKSPACE</p>
       <h1>Welcome back</h1><p class="muted">Sign in to securely access your documents.</p>
-      {% if registered %}<p class="success-message" role="status">Your viewer account is ready. Sign in to continue.</p>{% endif %}
+      {% if registered == 'viewer' %}<p class="success-message" role="status">Your viewer account is ready. Sign in to continue.</p>{% endif %}
+      {% if registered == 'admin-pending' %}<p class="success-message" role="status">Your Admin access request was sent. An existing administrator must approve it before you can sign in.</p>{% endif %}
       <fieldset class="role-choice">
         <legend>Choose your role</legend>
         <label><input type="radio" name="role" value="admin"><span>Admin</span></label>
@@ -31,7 +32,7 @@
         <p class="error" id="login-error" role="alert"></p>
       </form>
       <p class="hint">Demo credentials are listed in README.md.</p>
-      <p class="auth-switch">New to TrustVault? <a href="/register">Create a viewer account</a></p>
+      <p class="auth-switch">New to TrustVault? <a href="/register">Create an account</a></p>
     </section>
   </main>
   <script>
@@ -50,7 +51,12 @@
           })
         });
         if (response.ok) location.href = "/";
-        else error.textContent = "Sign-in failed. Check your credentials and selected role.";
+        else {
+          const result = await response.json().catch(() => ({}));
+          error.textContent = result.error === "account_pending_approval"
+            ? "This Admin request is awaiting approval. You can sign in after an administrator approves it."
+            : "Sign-in failed. Check your credentials and selected role.";
+        }
       } catch (_error) {
         error.textContent = "Could not reach TrustVault. Check your connection and try again.";
       }

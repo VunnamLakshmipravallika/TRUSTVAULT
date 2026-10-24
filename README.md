@@ -49,7 +49,7 @@ Choose Admin or Viewer on the sign-in page; the selected role is checked against
 
 ### Create an account
 
-People who do not have an account can use **Create a viewer account** on the sign-in page. Registration requires a unique username, display name, and a password of 12–128 characters. Every self-registered account is assigned the `viewer` role by the server, regardless of any submitted role value, and starts with no document permissions. An owner must grant access to each document. Admin and owner accounts must be provisioned by an administrator; they cannot be created through public registration. Email verification, password recovery, and registration rate limiting are not implemented.
+People who do not have an account can use **Create an account** on the sign-in page and choose Viewer or Admin. Viewer accounts activate immediately and start with no document permissions; an owner must grant access to each document. Choosing Admin creates a pending request, not an administrator account. The user cannot sign in until an existing admin approves the request in the **Admin requests** panel. Approval and rejection are audited; a rejected request remains unable to sign in. Owner accounts are not available through public registration. The server assigns roles and statuses regardless of client-supplied role fields. Email verification, password recovery, and registration rate limiting are not implemented.
 
 ## Email notifications for access grants
 
@@ -95,7 +95,7 @@ Uploads are limited to 10 MiB and validated against an allowlist and basic file 
 python -m unittest discover -s tests -v
 ```
 
-The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; verify admin/viewer post-login identity gating; and test viewer-only registration, password and username validation, duplicate usernames, CSRF protection, and login after registration. and owner-only sign-in visibility; test expiry purge; and check review output redaction and PDF generation.
+The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; verify admin/viewer post-login identity gating and owner-only sign-in visibility; test viewer registration and login, pending admin requests, approval/rejection, admin-only decisions, input validation, and CSRF protection; test expiry purge; and check review output redaction and PDF generation.
 
 ## API
 

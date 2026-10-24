@@ -6,7 +6,11 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL CHECK (role IN ('admin', 'owner', 'viewer')),
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    auth_version INTEGER NOT NULL DEFAULT 1
+    auth_version INTEGER NOT NULL DEFAULT 1,
+    requested_role TEXT NOT NULL DEFAULT 'viewer' CHECK (requested_role IN ('admin', 'owner', 'viewer')),
+    account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'pending', 'rejected')),
+    reviewed_by INTEGER REFERENCES users(id),
+    reviewed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS documents (

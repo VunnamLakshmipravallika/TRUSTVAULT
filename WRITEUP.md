@@ -15,7 +15,7 @@ TrustVault addresses this with named, per-document grants and server-side author
 ## 2. What actually works right now
 
 - Role-selected sign-in for administrator, document-owner, and viewer accounts. The Owner option opens a dedicated sign-in page; only `pravallika` can authenticate as owner. Its password is set interactively with `python app.py --configure-owner` and stored as a hash. Changing the owner password invalidates existing owner sessions.
-- Public registration creates viewer accounts only; each starts with no document grants. Admin and owner accounts cannot self-register.
+- Public registration offers Viewer or Admin. Viewers activate immediately with no document grants; Admin requests remain unable to log in until an existing administrator approves them from the Admin requests panel. Rejections stay disabled and both decisions are audited. Owner accounts cannot self-register.
 - Owner upload, search/filter, metadata editing, soft deletion, and private file download.
 - Per-document `read` and `edit` grants to named accounts, with owner-controlled grant and revocation.
 - Authorization checks on document routes, including download and review; revocation blocks the next request. A file already downloaded cannot be recalled.
@@ -26,7 +26,7 @@ TrustVault addresses this with named, per-document grants and server-side author
 - After login, admins and viewers submit a self-reported User ID before entering the workspace. The owner dashboard lists each successful admin/viewer login using the authenticated username, role, and timestamp, with the optional self-reported ID alongside it. The typed ID is not independently verified.
 - Owner workspace includes a dashboard with active-document, shared-document, access-grant, and seven-day expiry counts, plus recent activity for documents they own.
 - Local heuristic privacy scanning for supported PDF, DOCX, and TXT documents, with redacted findings and a downloadable PDF report. The scan is not a compliance certification and does not support image OCR.
-- Automated tests for authorization boundaries, revocation, upload validation, email behavior, audit behavior, and privacy-review output.
+- Automated tests for authorization boundaries, revocation, upload validation, viewer registration, admin-request approval/rejection, role gating, email behavior, audit behavior, and privacy-review output.
 
 **Roles:** Owners upload and manage their own documents and grants. Viewers have no access unless explicitly granted. Administrators can inspect workspace metadata and audit activity but do not automatically receive document-content access.
 
@@ -62,7 +62,7 @@ Run the tests in another terminal from the repository root:
 python -m unittest discover -s tests -v
 ```
 
-All 32 tests passed in local verification on 2026-10-24. This is not evidence of a public deployment. Do not use the seeded passwords for a shared or production system.
+All 35 tests passed in local verification on 2026-10-24. This is not evidence of a public deployment. Do not use the seeded passwords for a shared or production system.
 
 ## 4. AI tools used
 
