@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: trustvault
+    runtime: python
+    plan: starter
+    buildCommand: python -m pip install -r requirements.txt
+    startCommand: python app.py --production-bootstrap && gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 app:app
+    healthCheckPath: /health
+    disk:
+      name: trustvault-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: TRUSTVAULT_INSTANCE
+        value: /var/data
+      - key: TRUSTVAULT_COOKIE_SECURE
+        value: "1"
+      - key: TRUSTVAULT_OWNER_PASSWORD
+        sync: false
+      - key: TRUSTVAULT_ADMIN_PASSWORD
+        sync: false
+      - key: TRUSTVAULT_BASE_URL
+        sync: false
+      - key: TRUSTVAULT_SESSION_KEY
+        generateValue: true
+      - key: TRUSTVAULT_AUDIT_KEY
+        generateValue: true

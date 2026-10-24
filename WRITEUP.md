@@ -1,7 +1,7 @@
 # TrustVault — secure document sharing with a real audit trail
 
 **Repository:** [VunnamLakshmipravallika/TRUSTVAULT](https://github.com/VunnamLakshmipravallika/TRUSTVAULT)
-**Status:** Runnable local prototype; deployment and demo recording are not included.
+**Status:** Runnable and tested local prototype with a production deployment blueprint; no live deployment URL or demo recording is available yet.
 **One-line description:** A Flask document-sharing app with named per-file permissions, server-checked revocation, and a tamper-evident activity log.
 
 The following sections are formatted as answers for the six project-submission questions.
@@ -26,6 +26,8 @@ TrustVault addresses this with named, per-document grants and server-side author
 - After login, admins and viewers submit a self-reported User ID before entering the workspace. The owner dashboard lists each successful admin/viewer login using the authenticated username, role, and timestamp, with the optional self-reported ID alongside it. The typed ID is not independently verified.
 - Owner workspace includes a dashboard with active-document, shared-document, access-grant, and seven-day expiry counts, plus recent activity for documents they own.
 - Local heuristic privacy scanning for supported PDF, DOCX, and TXT documents, with redacted findings and a downloadable PDF report. The scan is not a compliance certification and does not support image OCR.
+- A Render deployment blueprint includes a persistent disk, secure cookies, generated session/audit keys, Gunicorn, health checks, and a production bootstrap that creates only configured Owner/Admin accounts. This configuration has not yet been deployed to a public service.
+- GitHub Actions runs the automated test suite and JavaScript syntax check on pushes and pull requests to `main`.
 - Automated tests for authorization boundaries, revocation, upload validation, viewer registration, admin-request approval/rejection, role gating, email behavior, audit behavior, and privacy-review output.
 
 **Roles:** Owners upload and manage their own documents and grants. Viewers have no access unless explicitly granted. Administrators can inspect workspace metadata and audit activity but do not automatically receive document-content access.
@@ -62,7 +64,7 @@ Run the tests in another terminal from the repository root:
 python -m unittest discover -s tests -v
 ```
 
-All 35 tests passed in local verification on 2026-10-24. This is not evidence of a public deployment. Do not use the seeded passwords for a shared or production system.
+All 37 tests passed in local verification on 2026-10-24. A separate isolated smoke test verified the production bootstrap creates only the configured Owner/Admin accounts and that Gunicorn serves `/health`. This does not verify a public deployment. Do not use the seeded passwords for a shared or production system.
 
 ## 4. AI tools used
 
@@ -76,7 +78,7 @@ The missing runtime files were added to the Git repository, and its README now e
 
 ## 6. What is unfinished
 
-- A live deployment URL and five-minute demo recording are not provided. Do not enter a placeholder URL in the submission form; deploy the app and verify the link in a private/incognito window first.
+- A live deployment URL and five-minute demo recording are not provided. Do not enter a placeholder URL in the submission form; deploy the app, configure its private secrets and persistent disk, and verify the link in a private/incognito window first.
 - Production account administration, MFA, rate limiting, malware scanning, external append-only audit storage, document versioning/recovery, and disaster-recovery testing are not implemented.
 - Real email delivery requires SMTP credentials and real account email addresses; the seeded `.test` addresses cannot receive mail.
 - The local development server is not hardened for direct internet exposure. A real deployment needs HTTPS, secure secrets, protected persistent storage, and operational monitoring.
@@ -91,4 +93,4 @@ See [README.md](README.md) for the full endpoint permissions and setup details, 
 - Use the GitHub link above for the repository field.
 - Leave the live-website field unsubmitted until you have deployed the application and confirmed it opens for a stranger. No deployment URL is available yet.
 - Copy the six answers above into their respective form boxes, then tick “I am done. Submit this for evaluation” only when the required fields and live URL are ready.
-- The challenge says not to make the repository public before the deadline. This repository is currently public, so change its GitHub visibility to private until the permitted time if that rule applies to your submission. Do not fabricate commit dates or history.
+- The supplied challenge instructions say both to use a public GitHub repository and not to make it public before the deadline. This repository is currently public; confirm the intended visibility with the placement cell immediately. Do not fabricate commit dates or history.

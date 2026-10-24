@@ -254,6 +254,50 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(approved_login.status_code, 200)
         self.assertTrue(approved_login.json["identity_required"])
 
+    def test_production_bootstrap_creates_only_configured_owner_and_admin(self):
+        admin_password = "production-admin-password-123"
+        with trustvault.app.app_context():
+            trustvault.db().execute("DELETE FROM users WHERE username IN ('admin', 'viewer', 'outsider')")
+            trustvault.db().commit()
+        with patch.dict(
+            os.environ,
+            {
+                "TRUSTVAULT_OWNER_PASSWORD": "production-owner-password-123",
+                "TRUSTVAULT_ADMIN_PASSWORD": admin_password,
+            },
+        ):
+            trustvault.production_bootstrap()
+            with trustvault.app.app_context():
+                users = trustvault.db().execute(
+                    "SELECT username, role, account_status, password_hash FROM users ORDER BY username"
+                ).fetchall()
+                self.assertEqual(
+                    [(row["username"], row["role"], row["account_status"]) for row in users],
+                    [("admin", "admin", "active"), ("pravallika", "owner", "active")],
+                )
+                admin_hash = users[0]["password_hash"]
+                self.assertTrue(trustvault.check_password_hash(admin_hash, admin_password))
+                self.assertTrue(trustvault.verify_audit_chain())
+
+            with patch.dict(os.environ, {"TRUSTVAULT_ADMIN_PASSWORD": "a-new-admin-password-123"}):
+                trustvault.production_bootstrap()
+            with trustvault.app.app_context():
+                unchanged_hash = trustvault.db().execute(
+                    "SELECT password_hash FROM users WHERE username = 'admin'"
+                ).fetchone()["password_hash"]
+                self.assertEqual(unchanged_hash, admin_hash)
+
+    def test_production_bootstrap_requires_strong_configured_passwords(self):
+        with patch.dict(os.environ, {"TRUSTVAULT_OWNER_PASSWORD": "", "TRUSTVAULT_ADMIN_PASSWORD": ""}):
+            with self.assertRaisesRegex(ValueError, "requires TRUSTVAULT_OWNER_PASSWORD"):
+                trustvault.production_bootstrap()
+        with patch.dict(
+            os.environ,
+            {"TRUSTVAULT_OWNER_PASSWORD": "owner-password-long-enough", "TRUSTVAULT_ADMIN_PASSWORD": "short"},
+        ):
+            with self.assertRaisesRegex(ValueError, "TRUSTVAULT_ADMIN_PASSWORD must"):
+                trustvault.production_bootstrap()
+
     def test_non_admin_cannot_review_admin_account_requests(self):
         self.login("viewer", "viewerpass")
         self.assertEqual(self.client.get("/api/admin/account-requests").status_code, 404)

@@ -43,6 +43,14 @@ When opening the provided VS Code workspace rather than cloning the repository, 
 
 Admin and viewer seed accounts are for local evaluation only. The owner account is not seeded with a public default password.
 
+## Deploying on Render
+
+The repository includes a Render Blueprint in `render.yaml`. In Render, create a Blueprint from this repository and provide private values for `TRUSTVAULT_OWNER_PASSWORD` and `TRUSTVAULT_ADMIN_PASSWORD` (each 12–128 characters), plus the generated public URL for `TRUSTVAULT_BASE_URL`. Render generates the session and audit keys. The start command runs a production bootstrap that creates only the configured Owner and Admin accounts; it does not create the publicly documented local demo accounts or sample document. The bootstrap is safe to run on restarts and does not reset an existing Admin password.
+
+The Blueprint uses one Gunicorn worker and a persistent disk for SQLite, uploaded files, and local keys. Persistent disks may require a paid Render plan; confirm current hosting costs before deployment. Do not remove the disk or run multiple app instances against the SQLite database. After deployment, open the generated HTTPS URL in a private window, verify `/health`, sign in as the configured Admin and Owner, and test upload, grant, download, revocation, and expiry. Keep the host's secret values private. No live deployment is currently claimed by this repository.
+
+The local `--seed` command is intentionally separate and must not be used in a public deployment because it creates demo accounts with published passwords.
+
 ### Role-based sign in
 
 Choose Admin or Viewer on the sign-in page; the selected role is checked against the authenticated account on the server. Choosing Owner opens the dedicated owner sign-in page. Only the `pravallika` account can authenticate as owner. Use `python app.py --configure-owner` to securely set or rotate its password; for deployments, `TRUSTVAULT_OWNER_PASSWORD` can be supplied through the host's private environment settings and the database updated at startup. Public registration reserves the owner username. If another account already uses it or more than one owner account exists, startup stops with an explicit error rather than silently changing account ownership or disabling accounts.
@@ -95,7 +103,7 @@ Uploads are limited to 10 MiB and validated against an allowlist and basic file 
 python -m unittest discover -s tests -v
 ```
 
-The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; verify admin/viewer post-login identity gating and owner-only sign-in visibility; test viewer registration and login, pending admin requests, approval/rejection, admin-only decisions, input validation, and CSRF protection; test expiry purge; and check review output redaction and PDF generation.
+The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; verify admin/viewer post-login identity gating and owner-only sign-in visibility; test viewer registration and login, pending admin requests, approval/rejection, admin-only decisions, input validation, and CSRF protection; test expiry purge; and check review output redaction and PDF generation. GitHub Actions runs this suite and checks JavaScript syntax for pushes and pull requests to `main`.
 
 ## API
 

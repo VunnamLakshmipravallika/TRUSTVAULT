@@ -1256,6 +1256,39 @@ def seed():
     connection.close()
 
 
+def production_bootstrap():
+    owner_password = os.environ.get("TRUSTVAULT_OWNER_PASSWORD", "")
+    admin_password = os.environ.get("TRUSTVAULT_ADMIN_PASSWORD", "")
+    if not owner_password or not admin_password:
+        raise ValueError(
+            "Production setup requires TRUSTVAULT_OWNER_PASSWORD and TRUSTVAULT_ADMIN_PASSWORD."
+        )
+    if not 12 <= len(admin_password) <= 128:
+        raise ValueError("TRUSTVAULT_ADMIN_PASSWORD must be between 12 and 128 characters.")
+
+    initialize()
+    connection = sqlite3.connect(DATABASE)
+    try:
+        existing_admin = connection.execute(
+            "SELECT role, account_status FROM users WHERE username = 'admin' COLLATE NOCASE"
+        ).fetchone()
+        if existing_admin is None:
+            connection.execute(
+                """INSERT INTO users
+                   (username, display_name, role, password_hash, created_at, requested_role, account_status)
+                   VALUES ('admin', 'Administrator', 'admin', ?, ?, 'admin', 'active')""",
+                (generate_password_hash(admin_password), now()),
+            )
+            connection.commit()
+        elif existing_admin != ("admin", "active"):
+            raise ValueError(
+                "The reserved production administrator account exists but is not active; "
+                "resolve it before deployment."
+            )
+    finally:
+        connection.close()
+
+
 if __name__ == "__main__":
     if "--configure-owner" in sys.argv:
         initialize()
@@ -1266,6 +1299,9 @@ if __name__ == "__main__":
         os.environ["TRUSTVAULT_OWNER_PASSWORD"] = password
         initialize()
         print(f"Owner account configured for {OWNER_USERNAME}.")
+    elif "--production-bootstrap" in sys.argv:
+        production_bootstrap()
+        print("Production bootstrap complete; no demo users or demo documents were created.")
     elif "--seed" in sys.argv:
         seed()
         print("Database initialized. Demo users: admin, configured owner, viewer, outsider.")
