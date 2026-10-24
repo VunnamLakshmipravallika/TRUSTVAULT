@@ -42,6 +42,10 @@ When opening the provided VS Code workspace rather than cloning the repository, 
 
 Change demo passwords and secrets before any shared deployment. Seed accounts are for evaluation only.
 
+### Create an account
+
+People who do not have an account can use **Create a viewer account** on the sign-in page. Registration requires a unique username, display name, and a password of 12–128 characters. Every self-registered account is assigned the `viewer` role by the server, regardless of any submitted role value, and starts with no document permissions. An owner must grant access to each document. Admin and owner accounts must be provisioned by an administrator; they cannot be created through public registration. Email verification, password recovery, and registration rate limiting are not implemented.
+
 ## Email notifications for access grants
 
 Email is a notification only; it never contains the document or a bearer download link. Access is granted to the selected existing TrustVault account, and every view/download still requires that account's authenticated session and current permission. If SMTP delivery fails, the permission grant remains active and the UI explicitly reports that the email was not sent; both outcomes are recorded in the audit log.
@@ -86,7 +90,7 @@ Uploads are limited to 10 MiB and validated against an allowlist and basic file 
 python -m unittest discover -s tests -v
 ```
 
-The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; verify admin/viewer post-login identity gating and owner-only sign-in visibility; test expiry purge; and check review output redaction and PDF generation.
+The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; verify admin/viewer post-login identity gating; and test viewer-only registration, password and username validation, duplicate usernames, CSRF protection, and login after registration. and owner-only sign-in visibility; test expiry purge; and check review output redaction and PDF generation.
 
 ## API
 

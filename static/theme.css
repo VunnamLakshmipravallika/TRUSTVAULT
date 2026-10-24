@@ -653,6 +653,33 @@ dialog select {
   text-align: left;
 }
 
+.auth-content .auth-switch {
+  margin: 20px 0 0;
+  color: #718191;
+  font-size: 12px;
+}
+
+.auth-switch a {
+  color: #117d68;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.auth-switch a:hover {
+  text-decoration: underline;
+}
+
+.success-message {
+  margin: -12px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid #c8e8d9;
+  border-radius: 8px;
+  background: #f0faf4;
+  color: #216845;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .auth-content .identity-hint {
   margin: 18px 0 22px;
   padding: 12px 13px;

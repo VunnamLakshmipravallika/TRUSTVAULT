@@ -16,6 +16,7 @@
       <div class="auth-mobile-brand"><span class="brand-mark">T</span><span>TrustVault</span></div>
       <p class="eyebrow">PRIVATE DOCUMENT WORKSPACE</p>
       <h1>Welcome back</h1><p class="muted">Sign in to securely access your documents.</p>
+      {% if registered %}<p class="success-message" role="status">Your viewer account is ready. Sign in to continue.</p>{% endif %}
       <form id="login-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label>Username<input name="username" autocomplete="username" required autofocus placeholder="Enter your username"></label>
@@ -24,6 +25,7 @@
         <p class="error" id="login-error" role="alert"></p>
       </form>
       <p class="hint">Demo credentials are listed in README.md.</p>
+      <p class="auth-switch">New to TrustVault? <a href="/register">Create a viewer account</a></p>
     </section>
   </main>
   <script>

@@ -89,6 +89,88 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             return session["csrf_token"]
 
+    def test_public_registration_creates_only_a_viewer_and_can_log_in(self):
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "test-csrf"
+        response = self.client.post(
+            "/api/register",
+            json={
+                "username": "NewViewer",
+                "display_name": "New Viewer",
+                "password": "a-long-password-123",
+                "password_confirmation": "a-long-password-123",
+                "role": "admin",
+            },
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json["user"]["role"], "viewer")
+
+        with trustvault.app.app_context():
+            account = trustvault.db().execute(
+                "SELECT username, display_name, role, password_hash FROM users WHERE username = ?",
+                ("newviewer",),
+            ).fetchone()
+            self.assertEqual(account["role"], "viewer")
+            self.assertTrue(trustvault.check_password_hash(account["password_hash"], "a-long-password-123"))
+            self.assertTrue(trustvault.verify_audit_chain())
+            self.assertEqual(
+                trustvault.db().execute(
+                    "SELECT COUNT(*) FROM permissions WHERE user_id = (SELECT id FROM users WHERE username = ?)",
+                    ("newviewer",),
+                ).fetchone()[0],
+                0,
+            )
+
+        login_response = self.client.post(
+            "/api/login",
+            json={"username": "NEWVIEWER", "password": "a-long-password-123"},
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(login_response.status_code, 200)
+        self.assertTrue(login_response.json["identity_required"])
+
+    def test_registration_rejects_invalid_input_and_duplicate_usernames(self):
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "test-csrf"
+        headers = {"X-CSRF-Token": "test-csrf"}
+        valid = {
+            "username": "NewViewer",
+            "display_name": "New Viewer",
+            "password": "a-long-password-123",
+            "password_confirmation": "a-long-password-123",
+        }
+        invalid_password = {**valid, "username": "ShortPass", "password": "short",
+                            "password_confirmation": "short"}
+        self.assertEqual(self.client.post("/api/register", json=invalid_password, headers=headers).status_code, 400)
+        mismatch = {**valid, "username": "Mismatch", "password_confirmation": "different-password"}
+        self.assertEqual(self.client.post("/api/register", json=mismatch, headers=headers).status_code, 400)
+        invalid_username = {**valid, "username": "bad username"}
+        self.assertEqual(self.client.post("/api/register", json=invalid_username, headers=headers).status_code, 400)
+
+        self.assertEqual(self.client.post("/api/register", json=valid, headers=headers).status_code, 201)
+        duplicate = {**valid, "username": "NEWVIEWER"}
+        duplicate_response = self.client.post("/api/register", json=duplicate, headers=headers)
+        self.assertEqual(duplicate_response.status_code, 409)
+
+    def test_registration_requires_csrf_token(self):
+        response = self.client.post(
+            "/api/register",
+            json={"username": "NewViewer", "display_name": "New Viewer",
+                  "password": "a-long-password-123", "password_confirmation": "a-long-password-123"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_authenticated_user_cannot_create_an_additional_account(self):
+        self.login("owner", "ownerpass")
+        response = self.client.post(
+            "/api/register",
+            json={"username": "NewViewer", "display_name": "New Viewer",
+                  "password": "a-long-password-123", "password_confirmation": "a-long-password-123"},
+            headers={"X-CSRF-Token": self.csrf()},
+        )
+        self.assertEqual(response.status_code, 409)
+
     def test_ungranted_user_cannot_list_read_download_edit_or_delete(self):
         document_id = self.upload_as_owner()
         self.login("outsider", "outsiderpass")

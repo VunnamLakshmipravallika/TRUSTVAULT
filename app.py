@@ -4,6 +4,7 @@ import io
 import json
 import mimetypes
 import os
+import re
 import secrets
 import smtplib
 import sqlite3
@@ -369,7 +370,21 @@ def home():
         if session.get("identity_pending"):
             return render_template("user_id.html", user=user, csrf_token=csrf_token)
         return render_template("index.html", user=user, csrf_token=csrf_token)
-    return render_template("login.html", csrf_token=session.setdefault("csrf_token", secrets.token_urlsafe(32)))
+    return render_template(
+        "login.html",
+        csrf_token=session.setdefault("csrf_token", secrets.token_urlsafe(32)),
+        registered=request.args.get("registered") == "1",
+    )
+
+
+@app.get("/register")
+def registration_page():
+    if current_user() is not None:
+        return redirect(url_for("home"))
+    return render_template(
+        "register.html",
+        csrf_token=session.setdefault("csrf_token", secrets.token_urlsafe(32)),
+    )
 
 
 @app.get("/health")
@@ -397,6 +412,45 @@ def login():
     audit(user["id"], "authentication.succeeded", details={"login_event_id": login_event_id})
     return jsonify(user={"username": user["username"], "display_name": user["display_name"], "role": user["role"]},
                    csrf_token=session["csrf_token"], identity_required=session["identity_pending"])
+
+
+@app.post("/api/register")
+@csrf_protect
+def register():
+    if current_user() is not None:
+        return jsonify(error="already_authenticated"), 409
+
+    data = json_body()
+    username = data.get("username")
+    display_name = data.get("display_name")
+    password = data.get("password")
+    password_confirmation = data.get("password_confirmation")
+
+    if not isinstance(username, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{2,31}", username):
+        return jsonify(error="Username must be 3–32 characters using letters, numbers, _ or -, and start with a letter or number."), 400
+    if not isinstance(display_name, str):
+        return jsonify(error="Enter a display name of 1 to 80 printable characters."), 400
+    display_name = display_name.strip()
+    if not display_name or len(display_name) > 80 or not display_name.isprintable():
+        return jsonify(error="Enter a display name of 1 to 80 printable characters."), 400
+    if not isinstance(password, str) or len(password) < 12 or len(password) > 128:
+        return jsonify(error="Password must be between 12 and 128 characters."), 400
+    if password != password_confirmation:
+        return jsonify(error="Passwords do not match."), 400
+
+    normalized_username = username.lower()
+    try:
+        db().execute(
+            """INSERT INTO users(username, display_name, role, password_hash, created_at)
+               VALUES (?, ?, 'viewer', ?, ?)""",
+            (normalized_username, display_name, generate_password_hash(password), now()),
+        )
+        audit(None, "account.registered", details={"username": normalized_username, "role": "viewer"})
+    except sqlite3.IntegrityError:
+        db().rollback()
+        return jsonify(error="That username is already in use."), 409
+
+    return jsonify(ok=True, user={"username": normalized_username, "display_name": display_name, "role": "viewer"}), 201
 
 
 @app.post("/api/session/user-id")
