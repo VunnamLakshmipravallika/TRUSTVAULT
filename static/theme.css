@@ -615,6 +615,51 @@ dialog select {
   margin: 9px 0 27px;
 }
 
+.role-choice {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+
+.role-choice legend {
+  margin-bottom: 9px;
+  color: #34495e;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.auth-content .role-choice label {
+  display: flex;
+  min-height: 39px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 7px 6px;
+  border: 1px solid #dce4e9;
+  border-radius: 8px;
+  background: #fff;
+  color: #536578;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.role-choice label:has(input:checked) {
+  border-color: #8acbb7;
+  background: #eff8f5;
+  color: #116b59;
+}
+
+.role-choice input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #117d68;
+}
+
 .auth-content label {
   margin: 18px 0;
   color: #34495e;
@@ -834,6 +879,16 @@ dialog select {
 
   .auth-content {
     padding: 26px 22px;
+  }
+
+  .role-choice {
+    gap: 5px;
+  }
+
+  .auth-content .role-choice label {
+    gap: 4px;
+    padding-inline: 4px;
+    font-size: 10px;
   }
 }
 

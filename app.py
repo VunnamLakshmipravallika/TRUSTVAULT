@@ -1,3 +1,4 @@
+from getpass import getpass
 import hashlib
 import hmac
 import io
@@ -31,6 +32,7 @@ UPLOADS = INSTANCE / "private-files"
 DATABASE = Path(os.environ.get("TRUSTVAULT_DATABASE", INSTANCE / "trustvault.sqlite3"))
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_EXTENSIONS = {"pdf", "txt", "png", "jpg", "jpeg", "docx"}
+OWNER_USERNAME = "pravallika"
 
 app = Flask(__name__)
 app.config.update(
@@ -84,16 +86,84 @@ def close_db(_error=None):
 
 def initialize():
     connection = sqlite3.connect(DATABASE)
-    connection.execute("PRAGMA foreign_keys = ON")
-    connection.executescript((ROOT / "schema.sql").read_text())
-    user_columns = {row[1] for row in connection.execute("PRAGMA table_info(users)")}
-    if "email" not in user_columns:
-        connection.execute("ALTER TABLE users ADD COLUMN email TEXT")
-    document_columns = {row[1] for row in connection.execute("PRAGMA table_info(documents)")}
-    if "expires_at" not in document_columns:
-        connection.execute("ALTER TABLE documents ADD COLUMN expires_at TEXT")
-    connection.commit()
-    connection.close()
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.executescript((ROOT / "schema.sql").read_text())
+        user_columns = {row[1] for row in connection.execute("PRAGMA table_info(users)")}
+        if "email" not in user_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        if "auth_version" not in user_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 1")
+        document_columns = {row[1] for row in connection.execute("PRAGMA table_info(documents)")}
+        if "expires_at" not in document_columns:
+            connection.execute("ALTER TABLE documents ADD COLUMN expires_at TEXT")
+        owner_password = os.environ.get("TRUSTVAULT_OWNER_PASSWORD")
+        if owner_password:
+            configure_owner_account(connection, owner_password)
+        else:
+            if connection.execute("SELECT COUNT(*) FROM users WHERE role = 'owner'").fetchone()[0] > 1:
+                raise ValueError("Multiple owner accounts exist; resolve ownership before starting TrustVault.")
+            configured_owner = connection.execute(
+                "SELECT role FROM users WHERE username = ? COLLATE NOCASE", (OWNER_USERNAME,)
+            ).fetchone()
+            if configured_owner is not None and configured_owner[0] != "owner":
+                raise ValueError("The reserved owner username already belongs to another account.")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def configure_owner_account(connection, password):
+    if len(password) < 12 or len(password) > 128:
+        raise ValueError("TRUSTVAULT_OWNER_PASSWORD must be between 12 and 128 characters.")
+
+    existing_username = connection.execute(
+        "SELECT id, role FROM users WHERE username = ? COLLATE NOCASE", (OWNER_USERNAME,)
+    ).fetchone()
+    owner_rows = connection.execute(
+        "SELECT id FROM users WHERE role = 'owner' ORDER BY id"
+    ).fetchall()
+    if len(owner_rows) > 1:
+        raise ValueError("Multiple owner accounts exist; resolve ownership before configuring the single owner.")
+    owner_id = owner_rows[0][0] if owner_rows else None
+
+    if existing_username is not None and existing_username[1] != "owner":
+        raise ValueError("Configured owner username already belongs to another account.")
+    if owner_id is None and existing_username is None:
+        cursor = connection.execute(
+            """INSERT INTO users(username, display_name, role, password_hash, created_at)
+               VALUES (?, ?, 'owner', ?, ?)""",
+            (OWNER_USERNAME, OWNER_USERNAME.title(), generate_password_hash(password), now()),
+        )
+        owner_id = cursor.lastrowid
+    elif existing_username is not None:
+        owner_id = existing_username[0]
+    elif owner_rows:
+        owner_id = owner_rows[0][0]
+
+    current_owner = connection.execute(
+        "SELECT username, password_hash FROM users WHERE id = ?", (owner_id,)
+    ).fetchone()
+    password_matches = (
+        current_owner is not None
+        and check_password_hash(current_owner[1], password)
+    )
+    identity_matches = current_owner is not None and current_owner[0].lower() == OWNER_USERNAME
+    password_hash = current_owner[1] if password_matches else generate_password_hash(password)
+    auth_version_increment = int(not password_matches or not identity_matches)
+    connection.execute(
+        """UPDATE users SET username = ?, display_name = ?, email = ?, role = 'owner',
+                  password_hash = ?, auth_version = auth_version + ?
+           WHERE id = ?""",
+        (
+            OWNER_USERNAME,
+            OWNER_USERNAME.title(),
+            os.environ.get("TRUSTVAULT_EMAIL_OWNER", "").strip().lower() or None,
+            password_hash,
+            auth_version_increment,
+            owner_id,
+        ),
+    )
 
 
 def parse_expiry(value):
@@ -254,7 +324,14 @@ def current_user():
     user_id = session.get("user_id")
     if not user_id:
         return None
-    return db().execute("SELECT id, username, display_name, role FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = db().execute(
+        "SELECT id, username, display_name, role, auth_version FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if user is None or session.get("auth_version") != user["auth_version"]:
+        session.clear()
+        return None
+    return user
 
 
 def require_auth(fn):
@@ -387,6 +464,17 @@ def registration_page():
     )
 
 
+@app.get("/owner-login")
+def owner_login_page():
+    if current_user() is not None:
+        return redirect(url_for("home"))
+    return render_template(
+        "owner_login.html",
+        csrf_token=session.setdefault("csrf_token", secrets.token_urlsafe(32)),
+        owner_username=OWNER_USERNAME,
+    )
+
+
 @app.get("/health")
 def health():
     db().execute("SELECT 1").fetchone()
@@ -399,12 +487,21 @@ def login():
     data = json_body()
     username = str(data.get("username", "")).strip().lower()
     password = data.get("password", "")
+    requested_role = data.get("role")
+    if requested_role is not None and (
+        not isinstance(requested_role, str) or requested_role not in {"admin", "owner", "viewer"}
+    ):
+        return jsonify(error="invalid_credentials"), 401
     user = db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    if user is None or not check_password_hash(user["password_hash"], str(password)):
+    owner_username = OWNER_USERNAME
+    if (user is None or not check_password_hash(user["password_hash"], str(password))
+            or (requested_role is not None and requested_role != user["role"])
+            or (user is not None and user["role"] == "owner" and username != owner_username)):
         audit(None, "authentication.failed", details={"username": username[:120]})
         return jsonify(error="invalid_credentials"), 401
     session.clear()
     session["user_id"] = user["id"]
+    session["auth_version"] = user["auth_version"]
     session["csrf_token"] = secrets.token_urlsafe(32)
     session["identity_pending"] = user["role"] in {"admin", "viewer"}
     login_event_id = str(uuid.uuid4())
@@ -439,6 +536,8 @@ def register():
         return jsonify(error="Passwords do not match."), 400
 
     normalized_username = username.lower()
+    if normalized_username == OWNER_USERNAME:
+        return jsonify(error="That username is reserved for the TrustVault owner account."), 409
     try:
         db().execute(
             """INSERT INTO users(username, display_name, role, password_hash, created_at)
@@ -973,9 +1072,16 @@ def not_found(_error):
 def seed():
     initialize()
     connection = sqlite3.connect(DATABASE)
+    owner = connection.execute(
+        "SELECT id FROM users WHERE username = ? COLLATE NOCASE AND role = 'owner'",
+        (OWNER_USERNAME,),
+    ).fetchone()
+    owner_count = connection.execute("SELECT COUNT(*) FROM users WHERE role = 'owner'").fetchone()[0]
+    if owner is None or owner_count != 1:
+        connection.close()
+        raise RuntimeError("Configure the single owner with `python app.py --configure-owner` before seeding.")
     users = [
         ("admin", "Administrator", "admin", "Admin123!", "admin@example.test"),
-        ("owner", "Olivia Owner", "owner", "Owner123!", "owner@example.test"),
         ("viewer", "Victor Viewer", "viewer", "Viewer123!", "viewer@example.test"),
         ("outsider", "Oscar Outsider", "viewer", "Outside123!", "outsider@example.test"),
     ]
@@ -996,7 +1102,6 @@ def seed():
     sample_id = "00000000-0000-4000-8000-000000000001"
     exists = connection.execute("SELECT 1 FROM documents WHERE id = ?", (sample_id,)).fetchone()
     if exists is None:
-        owner = connection.execute("SELECT id FROM users WHERE username = 'owner'").fetchone()
         viewer = connection.execute("SELECT id FROM users WHERE username = 'viewer'").fetchone()
         sample_name = "Welcome to TrustVault.txt"
         sample_path = UPLOADS / sample_id
@@ -1024,9 +1129,18 @@ def seed():
 
 
 if __name__ == "__main__":
-    if "--seed" in sys.argv:
+    if "--configure-owner" in sys.argv:
+        initialize()
+        password = getpass("Set the owner password (12–128 characters): ")
+        confirmation = getpass("Confirm the owner password: ")
+        if password != confirmation:
+            raise SystemExit("Passwords do not match; owner account was not changed.")
+        os.environ["TRUSTVAULT_OWNER_PASSWORD"] = password
+        initialize()
+        print(f"Owner account configured for {OWNER_USERNAME}.")
+    elif "--seed" in sys.argv:
         seed()
-        print("Database initialized. Demo users: admin, owner, viewer, outsider.")
+        print("Database initialized. Demo users: admin, configured owner, viewer, outsider.")
     else:
         initialize()
         with app.app_context():

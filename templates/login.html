@@ -17,6 +17,12 @@
       <p class="eyebrow">PRIVATE DOCUMENT WORKSPACE</p>
       <h1>Welcome back</h1><p class="muted">Sign in to securely access your documents.</p>
       {% if registered %}<p class="success-message" role="status">Your viewer account is ready. Sign in to continue.</p>{% endif %}
+      <fieldset class="role-choice">
+        <legend>Choose your role</legend>
+        <label><input type="radio" name="role" value="admin"><span>Admin</span></label>
+        <label><input type="radio" name="role" value="viewer" checked><span>Viewer</span></label>
+        <label><input type="radio" name="role" value="owner"><span>Owner</span></label>
+      </fieldset>
       <form id="login-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label>Username<input name="username" autocomplete="username" required autofocus placeholder="Enter your username"></label>
@@ -32,12 +38,27 @@
     const form = document.querySelector("#login-form");
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const response = await fetch("/api/login", {
-        method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": form.csrf_token.value},
-        body: JSON.stringify({username: form.username.value, password: form.password.value})
+      const error = document.querySelector("#login-error");
+      error.textContent = "";
+      try {
+        const response = await fetch("/api/login", {
+          method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": form.csrf_token.value},
+          body: JSON.stringify({
+            username: form.username.value,
+            password: form.password.value,
+            role: document.querySelector('input[name="role"]:checked').value
+          })
+        });
+        if (response.ok) location.href = "/";
+        else error.textContent = "Sign-in failed. Check your credentials and selected role.";
+      } catch (_error) {
+        error.textContent = "Could not reach TrustVault. Check your connection and try again.";
+      }
+    });
+    document.querySelectorAll('input[name="role"]').forEach((radio) => {
+      radio.addEventListener("change", () => {
+        if (radio.checked && radio.value === "owner") location.href = "/owner-login";
       });
-      if (response.ok) location.href = "/";
-      else document.querySelector("#login-error").textContent = "Sign-in failed. Check your credentials and try again.";
     });
   </script>
 </body>

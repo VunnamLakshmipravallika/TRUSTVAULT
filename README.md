@@ -16,11 +16,12 @@ cd TRUSTVAULT
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+python app.py --configure-owner
 python app.py --seed
 python app.py
 ```
 
-The seed command initializes the local SQLite database and demo users, then exits. The next command starts the server. Open <http://127.0.0.1:5050>. Port 5000 is commonly occupied by macOS AirPlay/ControlCenter, so TrustVault uses port 5050 by default; set `PORT` to another free port if necessary. The health endpoint is <http://127.0.0.1:5050/health>. Seeding creates a harmless sample document under `instance/`. Do not expose the development server directly to the internet. For deployment, use a production WSGI server behind HTTPS, set `TRUSTVAULT_COOKIE_SECURE=1`, set strong `TRUSTVAULT_SESSION_KEY` and `TRUSTVAULT_AUDIT_KEY` secrets, and persist the instance directory and backups securely.
+The owner setup command asks for a password twice without echoing it; use 12–128 characters and keep it out of shell history and source control. It creates or updates the single owner account and stores only a password hash in the database. The seed command initializes the other demo users, then exits. The next command starts the server. Open <http://127.0.0.1:5050>. Port 5000 is commonly occupied by macOS AirPlay/ControlCenter, so TrustVault uses port 5050 by default; set `PORT` to another free port if necessary. The health endpoint is <http://127.0.0.1:5050/health>. Seeding creates a harmless sample document under `instance/`. Do not expose the development server directly to the internet. For deployment, configure the same owner password in the host's private environment settings or use the interactive owner setup against the persistent database, use a production WSGI server behind HTTPS, set `TRUSTVAULT_COOKIE_SECURE=1`, set strong `TRUSTVAULT_SESSION_KEY` and `TRUSTVAULT_AUDIT_KEY` secrets, and persist the instance directory and backups securely.
 
 When opening the provided VS Code workspace rather than cloning the repository, the Git repository and complete application are in its `trustvault/` subfolder. From the workspace parent, run `cd trustvault` before running the application commands above. Run commands from the repository root so Flask can find `app.py`, `document_review.py`, `schema.sql`, `templates/`, `static/`, and `tests/`.
 
@@ -36,11 +37,15 @@ When opening the provided VS Code workspace rather than cloning the repository, 
 | Role | Username | Password |
 |---|---|---|
 | Administrator | `admin` | `Admin123!` |
-| Document owner | `owner` | `Owner123!` |
+| Document owner | `pravallika` | Set interactively with `python app.py --configure-owner` |
 | Viewer | `viewer` | `Viewer123!` |
 | Unauthorised viewer for demos/tests | `outsider` | `Outside123!` |
 
-Change demo passwords and secrets before any shared deployment. Seed accounts are for evaluation only.
+Admin and viewer seed accounts are for local evaluation only. The owner account is not seeded with a public default password.
+
+### Role-based sign in
+
+Choose Admin or Viewer on the sign-in page; the selected role is checked against the authenticated account on the server. Choosing Owner opens the dedicated owner sign-in page. Only the `pravallika` account can authenticate as owner. Use `python app.py --configure-owner` to securely set or rotate its password; for deployments, `TRUSTVAULT_OWNER_PASSWORD` can be supplied through the host's private environment settings and the database updated at startup. Public registration reserves the owner username. If another account already uses it or more than one owner account exists, startup stops with an explicit error rather than silently changing account ownership or disabling accounts.
 
 ### Create an account
 

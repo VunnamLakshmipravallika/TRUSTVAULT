@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE COLLATE NOCASE,
     role TEXT NOT NULL CHECK (role IN ('admin', 'owner', 'viewer')),
     password_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    auth_version INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS documents (

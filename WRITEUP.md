@@ -14,7 +14,8 @@ TrustVault addresses this with named, per-document grants and server-side author
 
 ## 2. What actually works right now
 
-- Sign-in with administrator, document-owner, and viewer roles.
+- Role-selected sign-in for administrator, document-owner, and viewer accounts. The Owner option opens a dedicated sign-in page; only `pravallika` can authenticate as owner. Its password is set interactively with `python app.py --configure-owner` and stored as a hash. Changing the owner password invalidates existing owner sessions.
+- Public registration creates viewer accounts only; each starts with no document grants. Admin and owner accounts cannot self-register.
 - Owner upload, search/filter, metadata editing, soft deletion, and private file download.
 - Per-document `read` and `edit` grants to named accounts, with owner-controlled grant and revocation.
 - Authorization checks on document routes, including download and review; revocation blocks the next request. A file already downloaded cannot be recalled.
@@ -39,18 +40,19 @@ cd TRUSTVAULT
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+python app.py --configure-owner
 python app.py --seed
 python app.py
 ```
 
-The seed command initializes the local SQLite database and demo accounts, then exits. Start the server with the next command and open <http://127.0.0.1:5050>. Port 5000 is avoided because it may be occupied by a macOS system service.
+The owner setup command securely prompts twice for the owner password and stores only its password hash. The seed command initializes the other local demo accounts, then exits. Start the server with the next command and open <http://127.0.0.1:5050>. Port 5000 is avoided because it may be occupied by a macOS system service.
 
 Seeded local-only demo accounts:
 
 | Role | Username | Password |
 |---|---|---|
 | Administrator | `admin` | `Admin123!` |
-| Owner | `owner` | `Owner123!` |
+| Owner | `pravallika` | Set interactively with `python app.py --configure-owner` |
 | Viewer | `viewer` | `Viewer123!` |
 | Unauthorised viewer for access-denial demonstrations | `outsider` | `Outside123!` |
 
@@ -60,7 +62,7 @@ Run the tests in another terminal from the repository root:
 python -m unittest discover -s tests -v
 ```
 
-All 16 tests passed in the local verification on 2026-10-24. This is not evidence of a public deployment. Do not use the seeded passwords for a shared or production system.
+All 32 tests passed in local verification on 2026-10-24. This is not evidence of a public deployment. Do not use the seeded passwords for a shared or production system.
 
 ## 4. AI tools used
 

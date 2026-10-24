@@ -17,6 +17,11 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
+        self.owner_settings = patch.dict(
+            os.environ,
+            {"TRUSTVAULT_OWNER_PASSWORD": "ownerpass-test-123"},
+        )
+        self.owner_settings.start()
         trustvault.DATABASE = root / "test.sqlite3"
         trustvault.UPLOADS = root / "private-files"
         trustvault.UPLOADS.mkdir()
@@ -25,7 +30,6 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         connection = trustvault.sqlite3.connect(trustvault.DATABASE)
         from werkzeug.security import generate_password_hash
         for username, role, password in [
-            ("owner", "owner", "ownerpass"),
             ("viewer", "viewer", "viewerpass"),
             ("outsider", "viewer", "outsiderpass"),
             ("admin", "admin", "adminpass"),
@@ -35,17 +39,24 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
                    VALUES (?, ?, ?, ?, '2026-10-20', ?)""",
                 (username, username.title(), role, generate_password_hash(password), f"{username}@example.test"),
             )
+        connection.execute(
+            "UPDATE users SET email = ? WHERE username = ?",
+            ("owner@example.test", trustvault.OWNER_USERNAME),
+        )
         connection.commit()
         connection.close()
         self.client = trustvault.app.test_client()
 
     def tearDown(self):
         self.temp.cleanup()
+        self.owner_settings.stop()
 
     def login(self, username, password):
+        role = {"owner": "owner", "admin": "admin"}.get(username, "viewer")
+        username = trustvault.OWNER_USERNAME if username == "owner" else username
         with self.client.session_transaction() as session:
             session["csrf_token"] = "test-csrf"
-        response = self.client.post("/api/login", json={"username": username, "password": password},
+        response = self.client.post("/api/login", json={"username": username, "password": password, "role": role},
                                     headers={"X-CSRF-Token": "test-csrf"})
         self.assertEqual(response.status_code, 200)
         csrf_token = response.json["csrf_token"]
@@ -59,7 +70,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         return csrf_token
 
     def upload_as_owner(self, expires_at=None):
-        self.login("owner", "ownerpass")
+        self.login("owner", "ownerpass-test-123")
         data = {"name": "Private agreement", "category": "Contracts",
                 "file": (io.BytesIO(b"%PDF-1.4\nprivate document"), "agreement.pdf")}
         if expires_at is not None:
@@ -74,7 +85,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         return response.json["document"]["id"]
 
     def upload_text_as_owner(self, text):
-        self.login("owner", "ownerpass")
+        self.login("owner", "ownerpass-test-123")
         response = self.client.post(
             "/api/documents",
             data={"name": "Review source", "category": "Test",
@@ -124,11 +135,56 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
 
         login_response = self.client.post(
             "/api/login",
-            json={"username": "NEWVIEWER", "password": "a-long-password-123"},
+            json={"username": "NEWVIEWER", "password": "a-long-password-123", "role": "viewer"},
             headers={"X-CSRF-Token": "test-csrf"},
         )
         self.assertEqual(login_response.status_code, 200)
         self.assertTrue(login_response.json["identity_required"])
+
+    def test_login_enforces_selected_role_and_single_owner_username(self):
+        from werkzeug.security import generate_password_hash
+
+        with trustvault.app.app_context():
+            trustvault.db().execute(
+                """INSERT INTO users(username, display_name, role, password_hash, created_at)
+                   VALUES (?, ?, 'owner', ?, ?)""",
+                ("rogueowner", "Rogue Owner", generate_password_hash("rogue-owner-password"), trustvault.now()),
+            )
+            trustvault.db().commit()
+        with self.assertRaisesRegex(ValueError, "Multiple owner accounts"):
+            trustvault.initialize()
+        with trustvault.app.app_context():
+            trustvault.db().execute("DELETE FROM users WHERE username = ?", ("rogueowner",))
+            trustvault.db().commit()
+        with trustvault.app.app_context():
+            self.assertEqual(
+                trustvault.db().execute("SELECT COUNT(*) FROM users WHERE role = 'owner'").fetchone()[0],
+                1,
+            )
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "test-csrf"
+        headers = {"X-CSRF-Token": "test-csrf"}
+
+        wrong_role = self.client.post(
+            "/api/login",
+            json={"username": "viewer", "password": "viewerpass", "role": "admin"},
+            headers=headers,
+        )
+        self.assertEqual(wrong_role.status_code, 401)
+
+        wrong_owner_name = self.client.post(
+            "/api/login",
+            json={"username": "rogueowner", "password": "rogue-owner-password", "role": "owner"},
+            headers=headers,
+        )
+        self.assertEqual(wrong_owner_name.status_code, 401)
+
+        correct_owner = self.client.post(
+            "/api/login",
+            json={"username": trustvault.OWNER_USERNAME, "password": "ownerpass-test-123", "role": "owner"},
+            headers=headers,
+        )
+        self.assertEqual(correct_owner.status_code, 200)
 
     def test_registration_rejects_invalid_input_and_duplicate_usernames(self):
         with self.client.session_transaction() as session:
@@ -147,11 +203,63 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/register", json=mismatch, headers=headers).status_code, 400)
         invalid_username = {**valid, "username": "bad username"}
         self.assertEqual(self.client.post("/api/register", json=invalid_username, headers=headers).status_code, 400)
+        reserved_username = {**valid, "username": "PRAVALLIKA"}
+        reserved_response = self.client.post("/api/register", json=reserved_username, headers=headers)
+        self.assertEqual(reserved_response.status_code, 409)
 
         self.assertEqual(self.client.post("/api/register", json=valid, headers=headers).status_code, 201)
         duplicate = {**valid, "username": "NEWVIEWER"}
         duplicate_response = self.client.post("/api/register", json=duplicate, headers=headers)
         self.assertEqual(duplicate_response.status_code, 409)
+
+    def test_owner_configuration_can_rename_the_existing_owner_once(self):
+        with trustvault.app.app_context():
+            trustvault.db().execute(
+                "UPDATE users SET username = ?, display_name = ? WHERE role = 'owner'",
+                ("old-owner", "Old Owner"),
+            )
+            trustvault.db().commit()
+        with patch.dict(
+            os.environ,
+            {"TRUSTVAULT_OWNER_PASSWORD": "private-owner-password"},
+        ):
+            trustvault.initialize()
+            with trustvault.app.app_context():
+                owners = trustvault.db().execute(
+                    "SELECT username, display_name, password_hash FROM users WHERE role = 'owner'"
+                ).fetchall()
+                self.assertEqual(len(owners), 1)
+                self.assertEqual(owners[0]["username"], "pravallika")
+                self.assertEqual(owners[0]["display_name"], "Pravallika")
+                self.assertTrue(
+                    trustvault.check_password_hash(owners[0]["password_hash"], "private-owner-password")
+                )
+
+    def test_rotating_owner_password_invalidates_existing_owner_session(self):
+        self.login("owner", "ownerpass-test-123")
+        self.assertEqual(self.client.get("/api/me").status_code, 200)
+
+        with patch.dict(
+            os.environ,
+            {"TRUSTVAULT_OWNER_PASSWORD": "rotated-owner-password"},
+        ):
+            trustvault.initialize()
+
+        self.assertEqual(self.client.get("/api/me").status_code, 401)
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "test-csrf"
+        old_password = self.client.post(
+            "/api/login",
+            json={"username": trustvault.OWNER_USERNAME, "password": "ownerpass-test-123", "role": "owner"},
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(old_password.status_code, 401)
+        new_password = self.client.post(
+            "/api/login",
+            json={"username": trustvault.OWNER_USERNAME, "password": "rotated-owner-password", "role": "owner"},
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(new_password.status_code, 200)
 
     def test_registration_requires_csrf_token(self):
         response = self.client.post(
@@ -161,8 +269,19 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_sign_in_displays_role_selection_and_dedicated_owner_login(self):
+        login_page = self.client.get("/")
+        self.assertIn(b'name="role" value="admin"', login_page.data)
+        self.assertIn(b'name="role" value="viewer"', login_page.data)
+        self.assertIn(b'name="role" value="owner"', login_page.data)
+
+        owner_page = self.client.get("/owner-login")
+        self.assertEqual(owner_page.status_code, 200)
+        self.assertIn(b'value="pravallika"', owner_page.data)
+        self.assertIn(b'name="role" value="owner"', owner_page.data)
+
     def test_authenticated_user_cannot_create_an_additional_account(self):
-        self.login("owner", "ownerpass")
+        self.login("owner", "ownerpass-test-123")
         response = self.client.post(
             "/api/register",
             json={"username": "NewViewer", "display_name": "New Viewer",
@@ -193,7 +312,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
 
     def test_expired_upload_is_rejected(self):
         past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds")
-        self.login("owner", "ownerpass")
+        self.login("owner", "ownerpass-test-123")
         response = self.client.post(
             "/api/documents",
             data={"name": "Already expired", "category": "Test", "expires_at": past,
@@ -296,7 +415,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
                     session["csrf_token"] = "owner-csrf"
                 owner_login = owner_client.post(
                     "/api/login",
-                    json={"username": "owner", "password": "ownerpass"},
+                    json={"username": trustvault.OWNER_USERNAME, "password": "ownerpass-test-123"},
                     headers={"X-CSRF-Token": "owner-csrf"},
                 )
                 self.assertFalse(owner_login.json["identity_required"])
@@ -326,7 +445,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
             session["csrf_token"] = "owner-csrf"
         self.assertEqual(owner.post(
             "/api/login",
-            json={"username": "owner", "password": "ownerpass"},
+            json={"username": trustvault.OWNER_USERNAME, "password": "ownerpass-test-123"},
             headers={"X-CSRF-Token": "owner-csrf"},
         ).status_code, 200)
         activity = owner.get("/api/owner/login-activity")
@@ -444,7 +563,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(response.json["notification"], {"sent": True, "status": "sent"})
         recipient, owner_name, document_name, permission = send_email.call_args.args
         self.assertEqual(recipient["email"], "viewer@example.test")
-        self.assertEqual((owner_name, document_name, permission), ("Owner", "Private agreement", "read"))
+        self.assertEqual((owner_name, document_name, permission), ("Pravallika", "Private agreement", "read"))
         actions = [event["action"] for event in self._audit_events()]
         self.assertIn("permission.granted", actions)
         self.assertIn("permission.email_sent", actions)
@@ -576,7 +695,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(self.client.get(f"/api/documents/{document_id}/review/latest").status_code, 404)
         self.assertEqual(self.client.get(f"/api/documents/{document_id}/review/latest.pdf").status_code, 404)
 
-        self.login("owner", "ownerpass")
+        self.login("owner", "ownerpass-test-123")
         self.client.post(
             f"/api/documents/{document_id}/permissions",
             json={"username": "viewer", "permission": "read", "notify": False},
@@ -590,7 +709,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         )
         self.assertEqual(viewer_review.status_code, 201)
         self.assertEqual(self.client.get(f"/api/documents/{document_id}/review/latest").json["report"]["reviewed_by"], "Viewer")
-        self.login("owner", "ownerpass")
+        self.login("owner", "ownerpass-test-123")
         self.client.delete(
             f"/api/documents/{document_id}/permissions/viewer",
             headers={"X-CSRF-Token": self.csrf()},
@@ -624,7 +743,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         response = self.client.get(f"/api/documents/{document_id}/download")
         self.assertEqual(response.status_code, 200)
         response.close()
-        self.login("owner", "ownerpass")
+        self.login("owner", "ownerpass-test-123")
         self.assertEqual(self.client.delete(f"/api/documents/{document_id}/permissions/viewer",
                                             headers={"X-CSRF-Token": self.csrf()}).status_code, 200)
         self.login("viewer", "viewerpass")
@@ -673,7 +792,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/users").status_code, 404)
 
     def test_invalid_upload_is_rejected(self):
-        self.login("owner", "ownerpass")
+        self.login("owner", "ownerpass-test-123")
         response = self.client.post("/api/documents",
                                     data={"file": (io.BytesIO(b"not a pdf"), "fake.pdf")},
                                     headers={"X-CSRF-Token": self.csrf()},
@@ -681,7 +800,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_audit_chain_verifies_and_database_rejects_mutation(self):
-        self.login("owner", "ownerpass")
+        self.login("owner", "ownerpass-test-123")
         with trustvault.app.app_context():
             self.assertTrue(trustvault.verify_audit_chain())
             with self.assertRaises(trustvault.sqlite3.IntegrityError):
