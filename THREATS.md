@@ -1,0 +1,35 @@
+# TrustVault threat model
+
+Scope: this demo's Flask application, SQLite database, local private file store, browser session, and named-user document grants. The server is the authorization authority. This is not a claim that the current local demo is production hardened.
+
+| Threat | Mitigation implemented | Residual risk / verification |
+|---|---|---|
+| Guess a document UUID, call the API directly, or modify a page URL | Authorization is checked in every document API route; unauthorized and nonexistent IDs both return 404. File storage has no static route. | Test direct metadata/download/update/delete calls with the outsider in `tests/test_authorization.py`. |
+| List/search another user's documents | Owner/viewer query filters to owner or current grantee. Admin may see document metadata across the workspace, but does not get file access by that role alone. | Direct admin download still fails without an explicit grant; tested at API level. |
+| Download using a previously copied URL after grant removal | Download route re-reads current permission on every request; it is not a bearer link. | A response already downloaded/copied cannot be recalled. Revocation prevents subsequent requests, not cached copies. |
+| Edit/delete/share as a read-only grantee | Update requires edit; deletion and grant management additionally require ownership. | Authorization denial is recorded. Automated role tests cover read-only behavior. |
+| Treat hidden UI controls as security | Every action is enforced server-side; API calls work regardless of interface. | Tests call routes directly rather than relying on browser visibility. |
+| Path traversal or guessing physical storage files | Storage filename is a server-generated UUID, path is not user-controlled, and private files are outside static serving. Original names are sanitized and used only as download names. | Anyone with host filesystem access can read files; restrict host/volume permissions. |
+| Upload executable or malformed file disguised by extension | Allowlist, size limit, PDF/image signatures, UTF-8 check for text, and DOCX archive/content check. | Not malware scanning, parser sandboxing, or content disarm. Deploy an antivirus/CDR pipeline for higher assurance. |
+| CSRF from a hostile website | Mutating API routes require a per-session CSRF token; session cookie is HttpOnly and SameSite=Lax. | Production must use HTTPS and `TRUSTVAULT_COOKIE_SECURE=1`; consider origin checks and a mature CSRF middleware. |
+| Brute-force passwords / stolen seeded credentials | Passwords are Werkzeug password hashes, not plaintext; login failures are audited. | No rate limiting, MFA, account lockout, or seed-password rotation enforcement. Do not expose default accounts in production. |
+| Quietly rewrite/delete audit events | Audit records are append-only through SQLite triggers and HMAC-chained; admin view verifies all rows. | An attacker with app host access and the HMAC key can forge a replacement chain. Keep key independent and export signed events to WORM/remote storage in production. |
+| Avoid audit by causing failed access | Denied document actions, failed login, invalid file type, successful reads/downloads, changes, deletion, and permission operations are logged. | Infrastructure-level failures (process killed before DB commit, host compromise) cannot be guaranteed recorded by this local process. |
+| Reuse an admin role to bypass document ACL | Administrator can inspect all active metadata and audit events, but file download still uses the same owner-or-grant check as other roles. | User provisioning/role changes are not implemented in this demo. |
+| Mistake an email notification for document authorization or leak a bearer link | Notifications go only to the registered address of an existing named account, contain no attachment or bearer token, and instruct recipients to sign in. Download routes recheck the current grant. | Mailbox access can expose notification text and document names; restrict email content and secure the mail account/provider. |
+| SMTP outage silently leaves owner believing a notification was delivered | The grant result reports notification failure separately, and the email failure is written to the audit log; the granted permission is stated as still active. | Delivery can be accepted by SMTP but later bounced; production needs provider delivery/bounce webhooks for end-to-end status. |
+| Unauthorized user uses a privacy-review endpoint to read document contents | Review routes call the current owner-or-grant authorization check. Reports are scoped to the reviewer, and each report/PDF request checks the current grant again. | A permitted reader may see derived findings; revocation blocks later access but cannot retract a report already downloaded. |
+| Review report leaks passwords or ID values through findings/audit | Findings contain categories, counts, and redacted samples. Audit events store only score and category count, never extracted text. | Scanning is heuristic; it may miss content or produce false positives and is not legal/compliance certification. |
+| Malicious document causes external AI disclosure or excessive extraction | Analysis runs locally, uses PDF/DOCX/TXT only, caps input extraction, page counts, and DOCX XML size, and sends nothing to a third party. | Parser vulnerabilities remain a dependency risk; keep the parser updated and isolate the worker for production workloads. |
+| Exploit concurrency or stale access state | SQLite queries permission during each operation; revoke and subsequent download read current committed state. | Deployment is a single SQLite-backed app; multi-region/storage consistency and concurrent adversarial race tests are out of scope. |
+| Exfiltrate via browser cache or previews | Download is attachment; browser UI does not embed document contents. | Once a permitted user downloads data, TrustVault cannot control screenshots, copies, or local cache. |
+| SQL injection through search/user input | SQL values use parameter binding; dynamic SQL fragments are selected only from fixed field/operator constants. | Continue to parameterize any future query filters. |
+
+## Security tests
+
+`python -m unittest discover -s tests -v` verifies ungranted access fails for listing, metadata, download, edit, delete, and review; read-only grants cannot modify or grant; revocation blocks a previously usable download URL and review report; admin audit does not confer content access; invalid PDF content is rejected; and review findings are redacted. The checks call server endpoints, not presentation-layer controls.
+
+## Deliberately accepted gaps
+
+This is an exam-ready local prototype, not a production service. It uses one application host and local files, lacks malware scanning, MFA, rate limits, an external tamper-resistant audit sink, secure account administration, retention automation, and a deployment-specific backup/restore design. The README documents these limits rather than presenting local HMAC chaining as protection against host root.
+
