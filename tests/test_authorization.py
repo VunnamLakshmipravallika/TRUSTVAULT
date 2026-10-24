@@ -223,9 +223,37 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
                 self.assertTrue(any(
                     entry["self_reported_user_id"] == submitted_id
                     and entry["role"] == role
-                    and entry["account_username"] == username
+                    and entry["username"] == username
                     for entry in activity.json["entries"]
                 ))
+
+    def test_owner_login_activity_includes_authenticated_username_before_id_submission(self):
+        viewer = trustvault.app.test_client()
+        with viewer.session_transaction() as session:
+            session["csrf_token"] = "viewer-csrf"
+        login = viewer.post(
+            "/api/login",
+            json={"username": "viewer", "password": "viewerpass"},
+            headers={"X-CSRF-Token": "viewer-csrf"},
+        )
+        self.assertEqual(login.status_code, 200)
+        self.assertTrue(login.json["identity_required"])
+
+        owner = trustvault.app.test_client()
+        with owner.session_transaction() as session:
+            session["csrf_token"] = "owner-csrf"
+        self.assertEqual(owner.post(
+            "/api/login",
+            json={"username": "owner", "password": "ownerpass"},
+            headers={"X-CSRF-Token": "owner-csrf"},
+        ).status_code, 200)
+        activity = owner.get("/api/owner/login-activity")
+        viewer_login = next(
+            entry for entry in activity.json["entries"]
+            if entry["username"] == "viewer"
+        )
+        self.assertEqual(viewer_login["role"], "viewer")
+        self.assertIsNone(viewer_login["self_reported_user_id"])
 
     def test_owner_login_activity_is_not_available_to_viewer_or_admin(self):
         for username, password in [("viewer", "viewerpass"), ("admin", "adminpass")]:

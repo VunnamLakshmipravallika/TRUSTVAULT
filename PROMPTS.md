@@ -65,6 +65,13 @@ This log is intentionally honest. The implementation work began before this Git 
 - **What was wrong / checked:** A self-entered ID is not proof of identity and could be spoofed if presented as a verified username. Letting a pending user call protected routes before submitting the value would also bypass the intended step.
 - **What I did instead:** Kept the typed value explicitly self-reported, stored the authenticated username/role independently, gated authenticated API/workspace access until submission, and restricted the view endpoint to owners. Added tests for admin/viewer gating, owner visibility, and denial to other roles. **Commit:** [`76c08a6`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/76c08a6acc7e931e32884fd441344687fc10c5b8).
 
+### 2026-10-24 — Fixing owner sign-in activity
+
+- **Prompt:** The owner could not open/use the “User sign-ins” page and asked to see the username of each admin/viewer who logs into TrustVault.
+- **Produced:** Review showed the panel depended on self-reported-ID events only, rather than listing successful authenticated login events.
+- **What was wrong / checked:** Users who had authenticated but had not yet submitted their optional prompt value were omitted, and the account username was not presented as the primary column. The dashboard also did not show a loading/error row when the API request failed.
+- **What I did instead:** Added a unique login-event ID to successful-login and self-reported-ID audit entries; changed the owner API to list successful admin/viewer logins with the authenticated account username, role, timestamp, and optional self-report; made the panel open and refresh explicitly; and added a regression test for login visibility before ID submission. **Commit:** to be added after this correction is committed.
+
 ### Future entries
 
 Continue adding dated entries as you use AI. At least two entries should cover authorization, access control, or the audit trail. Each entry must state the prompt, actual output, a specific defect or verification result, and the real commit URL/SHA for any correction. Do not invent dates, prompt details, or commit links.

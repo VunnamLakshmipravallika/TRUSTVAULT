@@ -182,22 +182,33 @@ document.querySelector("#activity-open")?.addEventListener("click", toggleActivi
 async function toggleUserLoginActivity(event) {
   event.preventDefault();
   const panel = document.querySelector("#user-login-activity");
-  panel.classList.toggle("hidden");
-  if (panel.classList.contains("hidden")) return;
+  panel.classList.remove("hidden");
+  await loadUserLoginActivity();
+}
+async function loadUserLoginActivity() {
+  const panel = document.querySelector("#user-login-activity");
+  const tbody = document.querySelector("#user-login-activity-events");
+  const empty = document.querySelector("#user-login-activity-empty");
+  tbody.innerHTML = `<tr><td colspan="4">Loading sign-in activity…</td></tr>`;
+  empty.classList.add("hidden");
   try {
     const {entries} = await api("/api/owner/login-activity");
-    const tbody = document.querySelector("#user-login-activity-events");
     tbody.innerHTML = "";
-    document.querySelector("#user-login-activity-empty").classList.toggle("hidden", entries.length !== 0);
+    empty.classList.toggle("hidden", entries.length !== 0);
     for (const entry of entries) {
       const row = document.createElement("tr");
-      row.innerHTML = `<td>${escapeHtml(entry.self_reported_user_id)}</td>
-        <td>${escapeHtml(entry.account_username)}</td><td>${escapeHtml(entry.role)}</td>
-        <td>${escapeHtml(new Date(entry.occurred_at).toLocaleString())}</td>`;
+      row.innerHTML = `<td>${escapeHtml(entry.username)}</td>
+        <td>${escapeHtml(entry.role)}</td>
+        <td>${escapeHtml(new Date(entry.occurred_at).toLocaleString())}</td>
+        <td>${escapeHtml(entry.self_reported_user_id || "Not provided")}</td>`;
       tbody.append(row);
     }
-  } catch (error) { toast(error.message); }
+  } catch (error) {
+    tbody.innerHTML = `<tr><td colspan="4">${escapeHtml(error.message)}</td></tr>`;
+    toast(error.message);
+  }
 }
 document.querySelector("#user-login-activity-link")?.addEventListener("click", toggleUserLoginActivity);
 document.querySelector("#user-login-activity-open")?.addEventListener("click", toggleUserLoginActivity);
+document.querySelector("#user-login-activity-refresh")?.addEventListener("click", loadUserLoginActivity);
 loadDocuments();

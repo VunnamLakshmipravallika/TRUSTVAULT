@@ -392,7 +392,9 @@ def login():
     session["user_id"] = user["id"]
     session["csrf_token"] = secrets.token_urlsafe(32)
     session["identity_pending"] = user["role"] in {"admin", "viewer"}
-    audit(user["id"], "authentication.succeeded")
+    login_event_id = str(uuid.uuid4())
+    session["login_event_id"] = login_event_id
+    audit(user["id"], "authentication.succeeded", details={"login_event_id": login_event_id})
     return jsonify(user={"username": user["username"], "display_name": user["display_name"], "role": user["role"]},
                    csrf_token=session["csrf_token"], identity_required=session["identity_pending"])
 
@@ -410,7 +412,14 @@ def submit_user_id():
             or len(submitted_user_id.strip()) > 100 or not submitted_user_id.strip().isprintable()):
         return jsonify(error="Enter a User ID of 1 to 100 printable characters."), 400
     submitted_user_id = submitted_user_id.strip()
-    audit(user["id"], "session.identity_submitted", details={"self_reported_user_id": submitted_user_id})
+    audit(
+        user["id"],
+        "session.identity_submitted",
+        details={
+            "login_event_id": session["login_event_id"],
+            "self_reported_user_id": submitted_user_id,
+        },
+    )
     session["identity_pending"] = False
     return jsonify(ok=True)
 
@@ -792,22 +801,30 @@ def owner_login_activity():
         audit(user["id"], "authorization.denied", details={"path": request.path, "reason": "owner_required"})
         return jsonify(error="not_found"), 404
     rows = db().execute(
-        """SELECT a.occurred_at, u.username AS account_username, u.role, a.details
+        """SELECT a.sequence, a.occurred_at, a.actor_id, a.action, a.details,
+                  u.username AS account_username, u.role
            FROM audit_events a JOIN users u ON u.id = a.actor_id
-           WHERE a.action = 'session.identity_submitted'
+           WHERE a.action IN ('authentication.succeeded', 'session.identity_submitted')
              AND u.role IN ('admin', 'viewer')
            ORDER BY a.sequence DESC"""
     ).fetchall()
-    entries = []
+    identities_by_login = {}
+    logins = []
     for row in rows:
         details = json.loads(row["details"])
-        entries.append({
+        if row["action"] == "session.identity_submitted":
+            login_event_id = details.get("login_event_id")
+            if login_event_id:
+                identities_by_login[login_event_id] = details.get("self_reported_user_id")
+            continue
+        login_event_id = details.get("login_event_id")
+        logins.append({
             "occurred_at": row["occurred_at"],
-            "account_username": row["account_username"],
+            "username": row["account_username"],
             "role": row["role"],
-            "self_reported_user_id": details["self_reported_user_id"],
+            "self_reported_user_id": identities_by_login.get(login_event_id),
         })
-    response = jsonify(entries=entries)
+    response = jsonify(entries=logins)
     response.headers["Cache-Control"] = "private, no-store"
     return response
 

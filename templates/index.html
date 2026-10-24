@@ -40,9 +40,9 @@
       {% if user.role == 'admin' %}<section id="activity" class="activity-panel hidden"><div class="panel-heading"><div><p class="eyebrow">ADMINISTRATION</p><h2>Activity log</h2></div><span id="chain-status" class="badge"></span></div><div id="activity-events"></div></section>{% endif %}
       {% if user.role == 'owner' %}
       <section id="user-login-activity" class="activity-panel hidden">
-        <div class="panel-heading"><div><p class="eyebrow">OWNER VIEW</p><h2>Admin and viewer sign-ins</h2></div></div>
-        <p class="muted">User IDs are self-reported and are not independently verified.</p>
-        <div class="table-wrap"><table><thead><tr><th>SELF-REPORTED USER ID</th><th>ACCOUNT</th><th>ROLE</th><th>WORKSPACE ENTRY TIME</th></tr></thead>
+        <div class="panel-heading"><div><p class="eyebrow">OWNER VIEW</p><h2>Admin and viewer sign-ins</h2></div><button type="button" class="text-button" id="user-login-activity-refresh">Refresh</button></div>
+        <p class="muted">Account usernames are recorded after successful login. Self-reported IDs are not independently verified.</p>
+        <div class="table-wrap"><table><thead><tr><th>USERNAME</th><th>ROLE</th><th>LOGIN DATE &amp; TIME</th><th>SELF-REPORTED USER ID</th></tr></thead>
           <tbody id="user-login-activity-events"></tbody></table>
           <div id="user-login-activity-empty" class="empty hidden"><b>No sign-ins recorded yet</b></div>
         </div>

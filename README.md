@@ -96,7 +96,7 @@ All mutation calls require the session CSRF token in `X-CSRF-Token`. Obtain it f
 |---|---|---|
 | `POST /api/login` | Anyone | Authenticate username/password |
 | `POST /api/session/user-id` | Authenticated viewer/admin with pending identity step | Submit a self-reported User ID to continue to the workspace; recorded in the audit log |
-| `GET /api/owner/login-activity` | Owner | View recorded viewer/admin User ID submissions, account names, roles, and timestamps |
+| `GET /api/owner/login-activity` | Owner | View successful viewer/admin logins with authenticated usernames, roles, timestamps, and optional self-reported IDs |
 | `GET /health` | Anyone | Health check verifies the application can query its database |
 | `POST /api/logout` | Authenticated user | End current session |
 | `POST /logout` | Authenticated browser session | CSRF-protected sign-out followed by redirect to sign-in |

@@ -22,7 +22,7 @@ TrustVault addresses this with named, per-document grants and server-side author
 - File extension/content checks and a 10 MiB upload limit.
 - An administrative activity view and a locally HMAC-chained audit log with SQLite update/delete triggers. The chain detects changes made without the audit key; it does not protect against an attacker controlling the application host and key.
 - Optional SMTP notifications on grants. Email is a notification only, contains no file or bearer download link, and does not itself grant access.
-- After login, admins and viewers submit a self-reported User ID before entering the workspace. The owner dashboard records that value alongside the authenticated account, role, and timestamp. The value is not independently verified.
+- After login, admins and viewers submit a self-reported User ID before entering the workspace. The owner dashboard lists each successful admin/viewer login using the authenticated username, role, and timestamp, with the optional self-reported ID alongside it. The typed ID is not independently verified.
 - Local heuristic privacy scanning for supported PDF, DOCX, and TXT documents, with redacted findings and a downloadable PDF report. The scan is not a compliance certification and does not support image OCR.
 - Automated tests for authorization boundaries, revocation, upload validation, email behavior, audit behavior, and privacy-review output.
 
