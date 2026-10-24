@@ -17,6 +17,7 @@
       <p class="eyebrow">PRIVATE DOCUMENT WORKSPACE</p>
       <h1>Welcome back</h1><p class="muted">Sign in to securely access your documents.</p>
       {% if registered == 'viewer' %}<p class="success-message" role="status">Your viewer account is ready. Sign in to continue.</p>{% endif %}
+      {% if registered == 'admin-active' %}<p class="success-message" role="status">Your Admin account is active. Select Admin and sign in with the account you just created.</p>{% endif %}
       {% if registered == 'admin-pending' %}<p class="success-message" role="status">Your Admin access request was sent. Sign in with an existing active Admin account and open Admin requests to approve it. This pending account cannot review its own request.</p>{% endif %}
       <fieldset class="role-choice">
         <legend>Choose your role</legend>
@@ -54,7 +55,7 @@
         else {
           const result = await response.json().catch(() => ({}));
           error.textContent = result.error === "account_pending_approval"
-            ? "This Admin request is awaiting approval. Sign in with an existing active Admin account to review it; this pending account cannot approve its own request."
+            ? "This Admin request is awaiting approval. An existing active Admin must approve it, or register again with a valid private Admin invitation code."
             : "Sign-in failed. Check your credentials and selected role.";
         }
       } catch (_error) {

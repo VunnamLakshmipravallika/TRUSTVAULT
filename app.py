@@ -33,6 +33,7 @@ DATABASE = Path(os.environ.get("TRUSTVAULT_DATABASE", INSTANCE / "trustvault.sql
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_EXTENSIONS = {"pdf", "txt", "png", "jpg", "jpeg", "docx"}
 OWNER_USERNAME = "pravallika"
+ADMIN_INVITE_ENV = "TRUSTVAULT_ADMIN_INVITE_CODE"
 
 app = Flask(__name__)
 app.config.update(
@@ -73,6 +74,33 @@ AUDIT_KEY = _load_secret("TRUSTVAULT_AUDIT_KEY", ".audit-key")
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def valid_admin_invite_code(candidate):
+    configured = os.environ.get(ADMIN_INVITE_ENV, "")
+    if not isinstance(candidate, str) or len(candidate) < 32:
+        return False
+    if configured:
+        if len(configured) < 32:
+            return False
+        return hmac.compare_digest(configured.encode(), candidate.encode())
+    try:
+        expected_hash = (INSTANCE / ".admin-invite-hash").read_text(encoding="ascii").strip()
+    except FileNotFoundError:
+        return False
+    candidate_hash = hashlib.sha256(candidate.encode()).hexdigest()
+    return hmac.compare_digest(expected_hash, candidate_hash)
+
+
+def configure_admin_invite_code(code):
+    if not isinstance(code, str) or not 32 <= len(code) <= 256:
+        raise ValueError("Admin invitation code must be between 32 and 256 characters.")
+    path = INSTANCE / ".admin-invite-hash"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    if hasattr(os, "fchmod"):
+        os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="ascii") as stream:
+        stream.write(hashlib.sha256(code.encode()).hexdigest())
 
 
 def db():
@@ -573,22 +601,28 @@ def register():
     normalized_username = username.lower()
     if normalized_username == OWNER_USERNAME:
         return jsonify(error="That username is reserved for the TrustVault owner account."), 409
-    account_status = "pending" if requested_role == "admin" else "active"
+    invited_admin = requested_role == "admin" and valid_admin_invite_code(data.get("admin_invite_code"))
+    account_role = "admin" if invited_admin else "viewer"
+    account_status = "active" if requested_role == "viewer" or invited_admin else "pending"
     try:
         db().execute(
             """INSERT INTO users
                (username, display_name, role, password_hash, created_at, requested_role, account_status)
-               VALUES (?, ?, 'viewer', ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 normalized_username,
                 display_name,
+                account_role,
                 generate_password_hash(password),
                 now(),
                 requested_role,
                 account_status,
             ),
         )
-        action = "account.admin_access_requested" if requested_role == "admin" else "account.registered"
+        if invited_admin:
+            action = "account.admin_registered_by_invite"
+        else:
+            action = "account.admin_access_requested" if requested_role == "admin" else "account.registered"
         audit(None, action, details={"username": normalized_username, "requested_role": requested_role})
     except sqlite3.IntegrityError:
         db().rollback()
@@ -600,7 +634,7 @@ def register():
         user={
             "username": normalized_username,
             "display_name": display_name,
-            "role": "viewer",
+            "role": account_role,
             "requested_role": requested_role,
             "account_status": account_status,
         },
@@ -1265,6 +1299,9 @@ def production_bootstrap():
         )
     if not 12 <= len(admin_password) <= 128:
         raise ValueError("TRUSTVAULT_ADMIN_PASSWORD must be between 12 and 128 characters.")
+    invite_code = os.environ.get(ADMIN_INVITE_ENV)
+    if invite_code and not 32 <= len(invite_code) <= 256:
+        raise ValueError(f"{ADMIN_INVITE_ENV} must be between 32 and 256 characters.")
 
     initialize()
     connection = sqlite3.connect(DATABASE)
@@ -1299,6 +1336,13 @@ if __name__ == "__main__":
         os.environ["TRUSTVAULT_OWNER_PASSWORD"] = password
         initialize()
         print(f"Owner account configured for {OWNER_USERNAME}.")
+    elif "--configure-admin-invite" in sys.argv:
+        invitation = getpass("Set a private Admin invitation code (32–256 characters): ")
+        confirmation = getpass("Confirm the Admin invitation code: ")
+        if invitation != confirmation:
+            raise SystemExit("Codes do not match; the Admin invitation was not changed.")
+        configure_admin_invite_code(invitation)
+        print("Admin invitation code configured. The code itself was not stored.")
     elif "--production-bootstrap" in sys.argv:
         production_bootstrap()
         print("Production bootstrap complete; no demo users or demo documents were created.")
