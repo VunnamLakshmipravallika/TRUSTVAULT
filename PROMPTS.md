@@ -49,7 +49,7 @@ This log is intentionally honest. The implementation work began before this Git 
 - **Prompt:** The user supplied a draft submission narrative that described the project as starting from scratch and asked to create the project.
 - **Produced:** A complete TrustVault application already existed, but the draft did not describe its implemented features and used a placeholder repository URL and a default port that did not match the application.
 - **What was wrong / checked:** The claims “currently in development” and “starting from scratch” understated the current implementation. The setup text did not identify the actual public repository or explain that seeding exits before the web server starts.
-- **What I did instead:** Rewrote `WRITEUP.md` to distinguish tested functionality from limitations, documented the actual clone/setup flow and port in `README.md`, and corrected this log to explain that the earlier code changes predate the first Git commit. **Commit:** [`ed6735a`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/ed6735a).
+- **What I did instead:** Rewrote `WRITEUP.md` to distinguish tested functionality from limitations, documented the actual clone/setup flow and port in `README.md`, corrected this log to explain that the earlier code changes predate the first Git commit, and then aligned the write-up with the six submission questions without inventing a live URL. **Commits:** [`ed6735a`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/ed6735a), [`f63ffc4`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/f63ffc4), [`0d4d3d7`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/0d4d3d7).
 
 ### Future entries
 
