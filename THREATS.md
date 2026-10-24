@@ -14,6 +14,7 @@ Scope: this demo's Flask application, SQLite database, local private file store,
 | Upload executable or malformed file disguised by extension | Allowlist, size limit, PDF/image signatures, UTF-8 check for text, and DOCX archive/content check. | Not malware scanning, parser sandboxing, or content disarm. Deploy an antivirus/CDR pipeline for higher assurance. |
 | CSRF from a hostile website | Mutating API routes require a per-session CSRF token; session cookie is HttpOnly and SameSite=Lax. | Production must use HTTPS and `TRUSTVAULT_COOKIE_SECURE=1`; consider origin checks and a mature CSRF middleware. |
 | Brute-force passwords / stolen seeded credentials | Passwords are Werkzeug password hashes, not plaintext; login failures are audited. | No rate limiting, MFA, account lockout, or seed-password rotation enforcement. Do not expose default accounts in production. |
+| Misrepresent identity in the post-login User ID prompt | The authenticated username and role are recorded separately from the entered value; owner dashboard labels the value as self-reported. Submission is CSRF-protected and recorded in the tamper-evident audit trail. | The application does not verify the typed ID against HR/SSO. It is an operator-provided label, not an authenticated identity factor. |
 | Quietly rewrite/delete audit events | Audit records are append-only through SQLite triggers and HMAC-chained; admin view verifies all rows. | An attacker with app host access and the HMAC key can forge a replacement chain. Keep key independent and export signed events to WORM/remote storage in production. |
 | Avoid audit by causing failed access | Denied document actions, failed login, invalid file type, successful reads/downloads, changes, deletion, and permission operations are logged. | Infrastructure-level failures (process killed before DB commit, host compromise) cannot be guaranteed recorded by this local process. |
 | Reuse an admin role to bypass document ACL | Administrator can inspect all active metadata and audit events, but file download still uses the same owner-or-grant check as other roles. | User provisioning/role changes are not implemented in this demo. |
@@ -28,7 +29,7 @@ Scope: this demo's Flask application, SQLite database, local private file store,
 
 ## Security tests
 
-`python -m unittest discover -s tests -v` verifies ungranted access fails for listing, metadata, download, edit, delete, and review; read-only grants cannot modify or grant; revocation blocks a previously usable download URL and review report; admin audit does not confer content access; invalid PDF content is rejected; and review findings are redacted. The checks call server endpoints, not presentation-layer controls.
+`python -m unittest discover -s tests -v` verifies ungranted access fails for listing, metadata, download, edit, delete, and review; read-only grants cannot modify or grant; revocation blocks a previously usable download URL and review report; admin audit does not confer content access; admin/viewer sessions are gated until an ID is submitted; the owner can see those submissions but other roles cannot; expiry purges content and related rows; invalid PDF content is rejected; and review findings are redacted. The checks call server endpoints, not presentation-layer controls.
 
 ## Deliberately accepted gaps
 

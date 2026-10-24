@@ -263,6 +263,10 @@ def require_auth(fn):
             if request.path.startswith("/api/"):
                 return jsonify(error="authentication_required"), 401
             return redirect(url_for("home"))
+        if session.get("identity_pending") and request.path not in {"/logout"}:
+            if request.path.startswith("/api/"):
+                return jsonify(error="identity_required"), 403
+            return redirect(url_for("home"))
         return fn(*args, **kwargs)
     return decorated
 
@@ -361,7 +365,10 @@ def file_is_valid(file_storage, extension):
 def home():
     user = current_user()
     if user:
-        return render_template("index.html", user=user, csrf_token=session.setdefault("csrf_token", secrets.token_urlsafe(32)))
+        csrf_token = session.setdefault("csrf_token", secrets.token_urlsafe(32))
+        if session.get("identity_pending"):
+            return render_template("user_id.html", user=user, csrf_token=csrf_token)
+        return render_template("index.html", user=user, csrf_token=csrf_token)
     return render_template("login.html", csrf_token=session.setdefault("csrf_token", secrets.token_urlsafe(32)))
 
 
@@ -384,9 +391,28 @@ def login():
     session.clear()
     session["user_id"] = user["id"]
     session["csrf_token"] = secrets.token_urlsafe(32)
+    session["identity_pending"] = user["role"] in {"admin", "viewer"}
     audit(user["id"], "authentication.succeeded")
     return jsonify(user={"username": user["username"], "display_name": user["display_name"], "role": user["role"]},
-                   csrf_token=session["csrf_token"])
+                   csrf_token=session["csrf_token"], identity_required=session["identity_pending"])
+
+
+@app.post("/api/session/user-id")
+@csrf_protect
+def submit_user_id():
+    user = current_user()
+    if user is None:
+        return jsonify(error="authentication_required"), 401
+    if user["role"] not in {"admin", "viewer"} or not session.get("identity_pending"):
+        return jsonify(error="identity_already_submitted"), 409
+    submitted_user_id = json_body().get("user_id")
+    if (not isinstance(submitted_user_id, str) or not submitted_user_id.strip()
+            or len(submitted_user_id.strip()) > 100 or not submitted_user_id.strip().isprintable()):
+        return jsonify(error="Enter a User ID of 1 to 100 printable characters."), 400
+    submitted_user_id = submitted_user_id.strip()
+    audit(user["id"], "session.identity_submitted", details={"self_reported_user_id": submitted_user_id})
+    session["identity_pending"] = False
+    return jsonify(ok=True)
 
 
 @app.post("/api/logout")
@@ -752,9 +778,38 @@ def admin_audit():
         """SELECT a.sequence, a.occurred_at, a.actor_id, u.username, a.action, a.document_id,
                   a.details, a.previous_hash, a.entry_hash
            FROM audit_events a LEFT JOIN users u ON u.id = a.actor_id
+           WHERE a.action != 'session.identity_submitted'
            ORDER BY a.sequence DESC LIMIT 100 OFFSET ?""", ((page - 1) * 100,)
     ).fetchall()
     return jsonify(events=[dict(row) for row in rows], chain_valid=verify_audit_chain())
+
+
+@app.get("/api/owner/login-activity")
+@require_auth
+def owner_login_activity():
+    user = current_user()
+    if user["role"] != "owner":
+        audit(user["id"], "authorization.denied", details={"path": request.path, "reason": "owner_required"})
+        return jsonify(error="not_found"), 404
+    rows = db().execute(
+        """SELECT a.occurred_at, u.username AS account_username, u.role, a.details
+           FROM audit_events a JOIN users u ON u.id = a.actor_id
+           WHERE a.action = 'session.identity_submitted'
+             AND u.role IN ('admin', 'viewer')
+           ORDER BY a.sequence DESC"""
+    ).fetchall()
+    entries = []
+    for row in rows:
+        details = json.loads(row["details"])
+        entries.append({
+            "occurred_at": row["occurred_at"],
+            "account_username": row["account_username"],
+            "role": row["role"],
+            "self_reported_user_id": details["self_reported_user_id"],
+        })
+    response = jsonify(entries=entries)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @app.errorhandler(413)

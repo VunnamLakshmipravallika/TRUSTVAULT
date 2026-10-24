@@ -179,4 +179,25 @@ async function toggleActivity(event) {
 }
 document.querySelector("#activity-link")?.addEventListener("click", toggleActivity);
 document.querySelector("#activity-open")?.addEventListener("click", toggleActivity);
+async function toggleUserLoginActivity(event) {
+  event.preventDefault();
+  const panel = document.querySelector("#user-login-activity");
+  panel.classList.toggle("hidden");
+  if (panel.classList.contains("hidden")) return;
+  try {
+    const {entries} = await api("/api/owner/login-activity");
+    const tbody = document.querySelector("#user-login-activity-events");
+    tbody.innerHTML = "";
+    document.querySelector("#user-login-activity-empty").classList.toggle("hidden", entries.length !== 0);
+    for (const entry of entries) {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${escapeHtml(entry.self_reported_user_id)}</td>
+        <td>${escapeHtml(entry.account_username)}</td><td>${escapeHtml(entry.role)}</td>
+        <td>${escapeHtml(new Date(entry.occurred_at).toLocaleString())}</td>`;
+      tbody.append(row);
+    }
+  } catch (error) { toast(error.message); }
+}
+document.querySelector("#user-login-activity-link")?.addEventListener("click", toggleUserLoginActivity);
+document.querySelector("#user-login-activity-open")?.addEventListener("click", toggleUserLoginActivity);
 loadDocuments();

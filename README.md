@@ -69,6 +69,7 @@ Replace example values with addresses/accounts controlled by you and SMTP creden
 - `owner` users can upload and own documents. Only the owner may grant/revoke named users, edit document metadata, or delete their document.
 - `viewer` users have no document access by default. A grant is stored per document and per named user, with `read` or `edit` permission.
 - `viewer` cannot upload or enumerate the recipient directory. `admin` can see all active document metadata and the administrative activity log, but **does not automatically get document-content access**. Admin must receive a normal explicit grant to download a file.
+- After authentication, `viewer` and `admin` users must submit a self-reported User ID before entering the workspace. Owners can view these sign-in submissions with the authenticated account name, role, and UTC timestamp in **User sign-ins**. The typed ID is not independently verified and must not be treated as proof of identity.
 - `read` can view metadata and download. `edit` can also change document name/category. Ownership alone permits `edit`; deletion and grant management remain owner-only.
 - Owners may set an optional expiry date/time during upload. The browser converts the selected local time to UTC; expired documents are denied immediately, then the running app's cleanup worker purges the file, document row, grants, and saved reviews and records the purge in the audit log. Cleanup runs at application startup, periodically while the built-in server is running, and on HTTP requests. Production multi-worker deployments must configure a reliable scheduled cleanup job. Local file deletion is not a forensic secure-erase guarantee for SSDs or backups.
 - Every metadata, permission, and download route checks the current database state. The browser UI is not an authorization boundary. Document IDs and stored paths are not public URLs.
@@ -85,7 +86,7 @@ Uploads are limited to 10 MiB and validated against an allowlist and basic file 
 python -m unittest discover -s tests -v
 ```
 
-The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; and check review output redaction and PDF generation.
+The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; verify admin/viewer post-login identity gating and owner-only sign-in visibility; test expiry purge; and check review output redaction and PDF generation.
 
 ## API
 
@@ -94,6 +95,8 @@ All mutation calls require the session CSRF token in `X-CSRF-Token`. Obtain it f
 | Method and path | Who may call | Behavior |
 |---|---|---|
 | `POST /api/login` | Anyone | Authenticate username/password |
+| `POST /api/session/user-id` | Authenticated viewer/admin with pending identity step | Submit a self-reported User ID to continue to the workspace; recorded in the audit log |
+| `GET /api/owner/login-activity` | Owner | View recorded viewer/admin User ID submissions, account names, roles, and timestamps |
 | `GET /health` | Anyone | Health check verifies the application can query its database |
 | `POST /api/logout` | Authenticated user | End current session |
 | `POST /logout` | Authenticated browser session | CSRF-protected sign-out followed by redirect to sign-in |

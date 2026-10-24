@@ -48,7 +48,15 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         response = self.client.post("/api/login", json={"username": username, "password": password},
                                     headers={"X-CSRF-Token": "test-csrf"})
         self.assertEqual(response.status_code, 200)
-        return response.json["csrf_token"]
+        csrf_token = response.json["csrf_token"]
+        if response.json["identity_required"]:
+            identity_response = self.client.post(
+                "/api/session/user-id",
+                json={"user_id": f"self-reported-{username}"},
+                headers={"X-CSRF-Token": csrf_token},
+            )
+            self.assertEqual(identity_response.status_code, 200)
+        return csrf_token
 
     def upload_as_owner(self, expires_at=None):
         self.login("owner", "ownerpass")
@@ -154,6 +162,87 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
             event["action"] == "document.expired_and_purged" and event["document_id"] == document_id
             for event in self._audit_events()
         ))
+
+    def test_viewer_and_admin_must_submit_user_id_before_entering_workspace(self):
+        for username, password, role in [
+            ("viewer", "viewerpass", "viewer"),
+            ("admin", "adminpass", "admin"),
+        ]:
+            with self.subTest(role=role):
+                client = trustvault.app.test_client()
+                with client.session_transaction() as session:
+                    session["csrf_token"] = "test-csrf"
+                login = client.post(
+                    "/api/login",
+                    json={"username": username, "password": password},
+                    headers={"X-CSRF-Token": "test-csrf"},
+                )
+                self.assertEqual(login.status_code, 200)
+                self.assertTrue(login.json["identity_required"])
+                workspace = client.get("/")
+                self.assertIn(b"Enter your User ID", workspace.data)
+                blocked = client.get("/api/documents")
+                self.assertEqual(blocked.status_code, 403)
+                self.assertEqual(blocked.json["error"], "identity_required")
+                invalid_id = client.post(
+                    "/api/session/user-id",
+                    json={"user_id": " "},
+                    headers={"X-CSRF-Token": login.json["csrf_token"]},
+                )
+                self.assertEqual(invalid_id.status_code, 400)
+                self.assertEqual(client.get("/api/documents").status_code, 403)
+
+                submitted_id = f"candidate-{role}-123"
+                submit = client.post(
+                    "/api/session/user-id",
+                    json={"user_id": submitted_id},
+                    headers={"X-CSRF-Token": login.json["csrf_token"]},
+                )
+                self.assertEqual(submit.status_code, 200)
+                self.assertEqual(client.get("/api/documents").status_code, 200)
+                if role == "admin":
+                    admin_audit = client.get("/api/admin/audit")
+                    self.assertEqual(admin_audit.status_code, 200)
+                    self.assertTrue(admin_audit.json["chain_valid"])
+                    self.assertNotIn(
+                        "session.identity_submitted",
+                        [event["action"] for event in admin_audit.json["events"]],
+                    )
+
+                owner_client = trustvault.app.test_client()
+                with owner_client.session_transaction() as session:
+                    session["csrf_token"] = "owner-csrf"
+                owner_login = owner_client.post(
+                    "/api/login",
+                    json={"username": "owner", "password": "ownerpass"},
+                    headers={"X-CSRF-Token": "owner-csrf"},
+                )
+                self.assertFalse(owner_login.json["identity_required"])
+                activity = owner_client.get("/api/owner/login-activity")
+                self.assertEqual(activity.status_code, 200)
+                self.assertTrue(any(
+                    entry["self_reported_user_id"] == submitted_id
+                    and entry["role"] == role
+                    and entry["account_username"] == username
+                    for entry in activity.json["entries"]
+                ))
+
+    def test_owner_login_activity_is_not_available_to_viewer_or_admin(self):
+        for username, password in [("viewer", "viewerpass"), ("admin", "adminpass")]:
+            with self.subTest(username=username):
+                client = trustvault.app.test_client()
+                with client.session_transaction() as session:
+                    session["csrf_token"] = "test-csrf"
+                login = client.post("/api/login", json={"username": username, "password": password},
+                                    headers={"X-CSRF-Token": "test-csrf"})
+                self.assertEqual(login.status_code, 200)
+                if login.json["identity_required"]:
+                    self.assertEqual(client.post(
+                        "/api/session/user-id",
+                        json={"user_id": f"self-reported-{username}"},
+                        headers={"X-CSRF-Token": login.json["csrf_token"]},
+                    ).status_code, 200)
+                self.assertEqual(client.get("/api/owner/login-activity").status_code, 404)
 
     def test_granted_viewer_can_download_but_cannot_change_or_grant(self):
         document_id = self.upload_as_owner()

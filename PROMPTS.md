@@ -58,6 +58,13 @@ This log is intentionally honest. The implementation work began before this Git 
 - **What was wrong / checked:** A UI-only expiry or a check only on download would leave other routes (metadata, review, permissions, or admin listing) able to reach expired data. Also, ordinary file unlink is not a guarantee of forensic erasure from SSD blocks or backups.
 - **What I did instead:** Added expiry to the upload UI and schema migration, normalized the selected device-local time to UTC, enforced expiration in listing and document access, and added startup/request/periodic purge with an audit event and tests for file, row, grant, and review removal. Documented the limits of filesystem deletion and the need for a scheduled cleanup job in production. **Commit:** [`ddef191`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/ddef191dea3322536c96853e3ad86b715b3f63c7).
 
+### 2026-10-24 — Post-login User ID and owner sign-in view
+
+- **Prompt:** Require admin/viewer users to enter a User ID after login and let the owner see the ID, role, and date/time.
+- **Produced:** A post-authentication step, an owner-only activity view, and an audit record linked to the authenticated account.
+- **What was wrong / checked:** A self-entered ID is not proof of identity and could be spoofed if presented as a verified username. Letting a pending user call protected routes before submitting the value would also bypass the intended step.
+- **What I did instead:** Kept the typed value explicitly self-reported, stored the authenticated username/role independently, gated authenticated API/workspace access until submission, and restricted the view endpoint to owners. Added tests for admin/viewer gating, owner visibility, and denial to other roles. **Commit:** to be added after implementation is committed.
+
 ### Future entries
 
 Continue adding dated entries as you use AI. At least two entries should cover authorization, access control, or the audit trail. Each entry must state the prompt, actual output, a specific defect or verification result, and the real commit URL/SHA for any correction. Do not invent dates, prompt details, or commit links.
