@@ -70,7 +70,7 @@ This log is intentionally honest. The implementation work began before this Git 
 - **Prompt:** The owner could not open/use the “User sign-ins” page and asked to see the username of each admin/viewer who logs into TrustVault.
 - **Produced:** Review showed the panel depended on self-reported-ID events only, rather than listing successful authenticated login events.
 - **What was wrong / checked:** Users who had authenticated but had not yet submitted their optional prompt value were omitted, and the account username was not presented as the primary column. The dashboard also did not show a loading/error row when the API request failed.
-- **What I did instead:** Added a unique login-event ID to successful-login and self-reported-ID audit entries; changed the owner API to list successful admin/viewer logins with the authenticated account username, role, timestamp, and optional self-report; made the panel open and refresh explicitly; and added a regression test for login visibility before ID submission. **Commit:** to be added after this correction is committed.
+- **What I did instead:** Added a unique login-event ID to successful-login and self-reported-ID audit entries; changed the owner API to list successful admin/viewer logins with the authenticated account username, role, timestamp, and optional self-report; made the panel open and refresh explicitly; and added a regression test for login visibility before ID submission. **Commit:** [`630af8d`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/630af8d8402e44db6ced0c428d12dcc680b01da2).
 
 ### Future entries
 
