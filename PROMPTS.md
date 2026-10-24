@@ -126,7 +126,7 @@ This log is intentionally honest. The implementation work began before this Git 
 - **Prompt:** The user clarified that they do not want an Admin invitation code and chose to keep approval by an existing Admin.
 - **Produced:** Removed the invitation field, configuration command, local hash-file logic, environment variable, and deployment setting. Public Admin registrations remain pending; arbitrary invitation values cannot bypass approval.
 - **What was wrong / checked:** Immediate Admin activation without an invitation would let any public registrant gain administrator privileges. I preserved the existing server-side approval guard instead of weakening it.
-- **What I did instead:** Restored the simple approve/reject-only flow, retained role-escalation regression coverage, and updated setup, deployment, threat, and submission docs. Verified all 38 tests pass and browser-checked the Admin registration copy, absence of any invite field, and zero horizontal overflow at a 390px viewport. **Commit:** add the actual commit link after committing this correction.
+- **What I did instead:** Restored the simple approve/reject-only flow, retained role-escalation regression coverage, and updated setup, deployment, threat, and submission docs. Verified all 38 tests pass and browser-checked the Admin registration copy, absence of any invite field, and zero horizontal overflow at a 390px viewport. **Commit:** [`63bec6f`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/63bec6f3e91b09f8c19c5dfb673f5fd39dcf7071).
 
 ### Future entries
 
