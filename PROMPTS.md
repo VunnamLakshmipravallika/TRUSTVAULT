@@ -63,7 +63,7 @@ This log is intentionally honest. The implementation work began before this Git 
 - **Prompt:** Require admin/viewer users to enter a User ID after login and let the owner see the ID, role, and date/time.
 - **Produced:** A post-authentication step, an owner-only activity view, and an audit record linked to the authenticated account.
 - **What was wrong / checked:** A self-entered ID is not proof of identity and could be spoofed if presented as a verified username. Letting a pending user call protected routes before submitting the value would also bypass the intended step.
-- **What I did instead:** Kept the typed value explicitly self-reported, stored the authenticated username/role independently, gated authenticated API/workspace access until submission, and restricted the view endpoint to owners. Added tests for admin/viewer gating, owner visibility, and denial to other roles. **Commit:** to be added after implementation is committed.
+- **What I did instead:** Kept the typed value explicitly self-reported, stored the authenticated username/role independently, gated authenticated API/workspace access until submission, and restricted the view endpoint to owners. Added tests for admin/viewer gating, owner visibility, and denial to other roles. **Commit:** [`76c08a6`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/76c08a6acc7e931e32884fd441344687fc10c5b8).
 
 ### Future entries
 
