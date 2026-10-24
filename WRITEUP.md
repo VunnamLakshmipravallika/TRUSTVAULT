@@ -1,15 +1,18 @@
-# TrustVault — project write-up
+# TrustVault — secure document sharing with a real audit trail
 
 **Repository:** [VunnamLakshmipravallika/TRUSTVAULT](https://github.com/VunnamLakshmipravallika/TRUSTVAULT)
 **Status:** Runnable local prototype; deployment and demo recording are not included.
+**One-line description:** A Flask document-sharing app with named per-file permissions, server-checked revocation, and a tamper-evident activity log.
 
-## 1. The problem
+The following sections are formatted as answers for the six project-submission questions.
+
+## 1. The problem you solved
 
 Companies need to share confidential documents with specific people without accidentally exposing a whole folder or relying on a link that remains usable after access is revoked. They also need an accountable record of successful and refused access, permission changes, and other document activity.
 
 TrustVault addresses this with named, per-document grants and server-side authorization. It is a security-focused prototype, not a claim of production certification.
 
-## 2. What works
+## 2. What actually works right now
 
 - Sign-in with administrator, document-owner, and viewer roles.
 - Owner upload, search/filter, metadata editing, soft deletion, and private file download.
@@ -23,7 +26,7 @@ TrustVault addresses this with named, per-document grants and server-side author
 
 **Roles:** Owners upload and manage their own documents and grants. Viewers have no access unless explicitly granted. Administrators can inspect workspace metadata and audit activity but do not automatically receive document-content access.
 
-## 3. Run locally
+## 3. How to run it
 
 Requires Python 3.10+ and pip. Commands below are for macOS/Linux; on Windows, activate the virtual environment with `.venv\\Scripts\\activate`.
 
@@ -60,18 +63,26 @@ All 16 tests passed in the local verification on 2026-10-24. This is not evidenc
 
 ChatGPT was used to help implement and review the Flask application, tests, and documentation, and to troubleshoot the project layout and startup instructions. The AI prompt/review record is in [PROMPTS.md](PROMPTS.md). The implementation and authorization behavior were checked by running the automated tests and exercising the app locally; AI-generated output was not treated as proof by itself.
 
-## 5. What the AI got wrong, and what was corrected
+## 5. What the AI got wrong, and what I corrected
 
 During troubleshooting, an earlier response said the app and tests had been verified, but the workspace files were split: the Git repository was in the `trustvault/` subfolder while the test and review modules, schema, templates, and static assets were outside it. Running tests from the workspace parent failed with `ModuleNotFoundError: No module named 'app'`; importing from the nested folder then failed to find `document_review`.
 
 The missing runtime files were added to the Git repository, and its README now explains the correct repository root and startup commands. Verification from the repository root passed all 16 tests. A separate smoke test with a temporary database verified seeding, health check, owner login, document listing, metadata, and sample download. The local changes were pushed to the repository's `main` branch.
 
-## 6. What is unfinished / limitations
+## 6. What is unfinished
 
-- No public live deployment or five-minute demo recording is provided.
+- A live deployment URL and five-minute demo recording are not provided. Do not enter a placeholder URL in the submission form; deploy the app and verify the link in a private/incognito window first.
 - Production account administration, MFA, rate limiting, malware scanning, external append-only audit storage, document versioning/recovery, and disaster-recovery testing are not implemented.
 - Real email delivery requires SMTP credentials and real account email addresses; the seeded `.test` addresses cannot receive mail.
 - The local development server is not hardened for direct internet exposure. A real deployment needs HTTPS, secure secrets, protected persistent storage, and operational monitoring.
 - Audit chaining is tamper-evident only while the audit key and application host remain trustworthy.
 
 See [README.md](README.md) for the full endpoint permissions and setup details, and [THREATS.md](THREATS.md) for the threat model and accepted risks.
+
+## Before submitting the form
+
+- Complete your own Snovasys profile, including your personal and education details and resume link; those details are not in this code repository.
+- Use the GitHub link above for the repository field.
+- Leave the live-website field unsubmitted until you have deployed the application and confirmed it opens for a stranger. No deployment URL is available yet.
+- Copy the six answers above into their respective form boxes, then tick “I am done. Submit this for evaluation” only when the required fields and live URL are ready.
+- The challenge says not to make the repository public before the deadline. This repository is currently public, so change its GitHub visibility to private until the permitted time if that rule applies to your submission. Do not fabricate commit dates or history.
