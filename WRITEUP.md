@@ -18,6 +18,7 @@ TrustVault addresses this with named, per-document grants and server-side author
 - Owner upload, search/filter, metadata editing, soft deletion, and private file download.
 - Per-document `read` and `edit` grants to named accounts, with owner-controlled grant and revocation.
 - Authorization checks on document routes, including download and review; revocation blocks the next request. A file already downloaded cannot be recalled.
+- Optional owner-selected expiry date/time at upload. Expired content becomes inaccessible and the running app purges its file, document row, grants, and saved reviews, with an audit event.
 - File extension/content checks and a 10 MiB upload limit.
 - An administrative activity view and a locally HMAC-chained audit log with SQLite update/delete triggers. The chain detects changes made without the audit key; it does not protect against an attacker controlling the application host and key.
 - Optional SMTP notifications on grants. Email is a notification only, contains no file or bearer download link, and does not itself grant access.
@@ -76,6 +77,7 @@ The missing runtime files were added to the Git repository, and its README now e
 - Real email delivery requires SMTP credentials and real account email addresses; the seeded `.test` addresses cannot receive mail.
 - The local development server is not hardened for direct internet exposure. A real deployment needs HTTPS, secure secrets, protected persistent storage, and operational monitoring.
 - Audit chaining is tamper-evident only while the audit key and application host remain trustworthy.
+- Expiry cleanup in the local app runs at startup, on HTTP requests, and periodically while the built-in server is running. A production multi-worker deployment needs a separately scheduled cleanup job. Filesystem deletion cannot guarantee forensic erasure from SSD storage or backups.
 
 See [README.md](README.md) for the full endpoint permissions and setup details, and [THREATS.md](THREATS.md) for the threat model and accepted risks.
 

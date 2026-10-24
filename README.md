@@ -70,6 +70,7 @@ Replace example values with addresses/accounts controlled by you and SMTP creden
 - `viewer` users have no document access by default. A grant is stored per document and per named user, with `read` or `edit` permission.
 - `viewer` cannot upload or enumerate the recipient directory. `admin` can see all active document metadata and the administrative activity log, but **does not automatically get document-content access**. Admin must receive a normal explicit grant to download a file.
 - `read` can view metadata and download. `edit` can also change document name/category. Ownership alone permits `edit`; deletion and grant management remain owner-only.
+- Owners may set an optional expiry date/time during upload. The browser converts the selected local time to UTC; expired documents are denied immediately, then the running app's cleanup worker purges the file, document row, grants, and saved reviews and records the purge in the audit log. Cleanup runs at application startup, periodically while the built-in server is running, and on HTTP requests. Production multi-worker deployments must configure a reliable scheduled cleanup job. Local file deletion is not a forensic secure-erase guarantee for SSDs or backups.
 - Every metadata, permission, and download route checks the current database state. The browser UI is not an authorization boundary. Document IDs and stored paths are not public URLs.
 
 ## Audit and limitations
@@ -99,7 +100,7 @@ All mutation calls require the session CSRF token in `X-CSRF-Token`. Obtain it f
 | `GET /api/me` | Authenticated user | Current identity and CSRF token |
 | `GET /api/users` | Owner | Named recipients available for grants |
 | `GET /api/documents` | Authenticated user | Owner/viewer search only owned or granted documents; admin sees all active metadata |
-| `POST /api/documents` | Owner role | Upload an allowlisted document (becomes owner) |
+| `POST /api/documents` | Owner role | Upload an allowlisted document; optional `expires_at` is a timezone-aware ISO-8601 timestamp |
 | `GET /api/documents/{id}` | Owner, granted `read`/`edit` user, or admin | Read metadata; admin receives metadata-only access; owner also gets grants |
 | `GET /api/documents/{id}/download` | Owner or granted `read`/`edit` user | Download; permission is rechecked each time |
 | `POST /api/documents/{id}/review` | Owner or granted `read`/`edit` user | Run a local sensitive-data pattern scan and save a user-scoped report |

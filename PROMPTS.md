@@ -51,6 +51,13 @@ This log is intentionally honest. The implementation work began before this Git 
 - **What was wrong / checked:** The claims “currently in development” and “starting from scratch” understated the current implementation. The setup text did not identify the actual public repository or explain that seeding exits before the web server starts.
 - **What I did instead:** Rewrote `WRITEUP.md` to distinguish tested functionality from limitations, documented the actual clone/setup flow and port in `README.md`, corrected this log to explain that the earlier code changes predate the first Git commit, and then aligned the write-up with the six submission questions without inventing a live URL. **Commits:** [`ed6735a`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/ed6735a), [`f63ffc4`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/f63ffc4), [`0d4d3d7`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/0d4d3d7).
 
+### 2026-10-24 — Owner-set document expiry
+
+- **Prompt:** Add an expiry date and time to owner uploads and make the document content expire at that deadline.
+- **Produced:** A design requiring a timezone-aware persisted expiry, server-side denial at the deadline, deletion of the file and associated database records, audit evidence, and automated tests.
+- **What was wrong / checked:** A UI-only expiry or a check only on download would leave other routes (metadata, review, permissions, or admin listing) able to reach expired data. Also, ordinary file unlink is not a guarantee of forensic erasure from SSD blocks or backups.
+- **What I did instead:** Added expiry to the upload UI and schema migration, normalized the selected device-local time to UTC, enforced expiration in listing and document access, and added startup/request/periodic purge with an audit event and tests for file, row, grant, and review removal. Documented the limits of filesystem deletion and the need for a scheduled cleanup job in production. **Commit:** to be added after implementation is committed.
+
 ### Future entries
 
 Continue adding dated entries as you use AI. At least two entries should cover authorization, access control, or the audit trail. Each entry must state the prompt, actual output, a specific defect or verification result, and the real commit URL/SHA for any correction. Do not invent dates, prompt details, or commit links.

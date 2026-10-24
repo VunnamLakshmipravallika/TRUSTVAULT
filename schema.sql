@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS documents (
     size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    expires_at TEXT,
     deleted_at TEXT
 );
 

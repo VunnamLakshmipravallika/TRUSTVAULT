@@ -30,7 +30,8 @@ async function loadDocuments() {
     document.querySelector("#empty").classList.toggle("hidden", documents.length !== 0);
     for (const doc of documents) {
       const row = document.createElement("tr");
-      row.innerHTML = `<td><button class="doc-name" data-open="${doc.id}"><span class="file-icon">▧</span><span>${escapeHtml(doc.name)}<small>${readableSize(doc.size_bytes)}</small></span></button></td>
+      const expiryLabel = doc.expires_at ? `Expires ${new Date(doc.expires_at).toLocaleString()}` : "No expiry";
+      row.innerHTML = `<td><button class="doc-name" data-open="${doc.id}"><span class="file-icon">▧</span><span>${escapeHtml(doc.name)}<small>${readableSize(doc.size_bytes)} · ${escapeHtml(expiryLabel)}</small></span></button></td>
         <td><span class="category">${escapeHtml(doc.category)}</span></td><td>${escapeHtml(doc.owner)}</td>
         <td><span class="access-dot"></span>${doc.permission === "edit" ? "Can edit" : doc.permission === "read" ? "Read only" : doc.permission === "admin_metadata" ? "Metadata only" : "No access"}</td>
         <td>${new Date(doc.created_at).toLocaleDateString()}</td><td><button class="icon-button" aria-label="Open document" data-open="${doc.id}">···</button></td>`;
@@ -50,7 +51,7 @@ async function openDocument(id) {
     const {document: doc, grants} = await api(`/api/documents/${id}`);
     const content = document.querySelector("#detail-content");
     content.innerHTML = `<div class="dialog-title"><div><p class="eyebrow">DOCUMENT DETAILS</p><h2>${escapeHtml(doc.name)}</h2></div><button class="text-button close" data-close>✕</button></div>
-      <p class="muted">${escapeHtml(doc.category)} · Owned by ${escapeHtml(doc.owner_name)}</p>
+      <p class="muted">${escapeHtml(doc.category)} · Owned by ${escapeHtml(doc.owner_name)} · ${doc.expires_at ? `Expires ${escapeHtml(new Date(doc.expires_at).toLocaleString())}` : "No expiry"}</p>
       <div class="detail-actions">${doc.permission === "admin_metadata" ? `<p class="metadata-notice">File contents are protected. Ask the owner for an explicit read grant to download this file.</p>` : `<a class="button primary" href="/api/documents/${id}/download">↓ &nbsp; Download</a>`}
       ${doc.permission === "edit" ? `<button class="button outline" id="edit-document">Edit details</button>` : ""}</div>
       ${doc.permission !== "admin_metadata" ? `<section class="review-tools"><button class="button outline" id="review-document">◈ &nbsp; Review document privacy</button><p class="muted">Local pattern checks only. The file is not sent to an AI service.</p><div id="review-result"></div></section>` : ""}
@@ -153,6 +154,8 @@ document.querySelector("#documents").addEventListener("click", event => {
 document.querySelector("#upload-form").addEventListener("submit", async event => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
+  const expiryInput = form.get("expires_at");
+  if (expiryInput) form.set("expires_at", new Date(expiryInput).toISOString());
   try {
     const result = await api("/api/documents", {method: "POST", body: form});
     document.querySelector("#upload-dialog").close();

@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -49,12 +50,15 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json["csrf_token"]
 
-    def upload_as_owner(self):
+    def upload_as_owner(self, expires_at=None):
         self.login("owner", "ownerpass")
+        data = {"name": "Private agreement", "category": "Contracts",
+                "file": (io.BytesIO(b"%PDF-1.4\nprivate document"), "agreement.pdf")}
+        if expires_at is not None:
+            data["expires_at"] = expires_at
         response = self.client.post(
             "/api/documents",
-            data={"name": "Private agreement", "category": "Contracts",
-                  "file": (io.BytesIO(b"%PDF-1.4\nprivate document"), "agreement.pdf")},
+            data=data,
             headers={"X-CSRF-Token": self.csrf()},
             content_type="multipart/form-data",
         )
@@ -88,6 +92,68 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(self.client.delete(f"/api/documents/{document_id}",
                                             headers={"X-CSRF-Token": self.csrf()}).status_code, 404)
         self.assertTrue(any(event["action"] == "authorization.denied" for event in self._audit_events()))
+
+    def test_upload_stores_future_expiry_in_utc_and_returns_it_in_listing(self):
+        expiry = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(timespec="seconds")
+        document_id = self.upload_as_owner(expiry)
+        row = self._document(document_id)
+        self.assertEqual(row["expires_at"], expiry)
+        listed = self.client.get("/api/documents").json["documents"]
+        self.assertEqual(listed[0]["expires_at"], expiry)
+
+    def test_expired_upload_is_rejected(self):
+        past = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds")
+        self.login("owner", "ownerpass")
+        response = self.client.post(
+            "/api/documents",
+            data={"name": "Already expired", "category": "Test", "expires_at": past,
+                  "file": (io.BytesIO(b"%PDF-1.4\nprivate document"), "expired.pdf")},
+            headers={"X-CSRF-Token": self.csrf()},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json["error"], "Expiry must be in the future.")
+
+    def test_expiry_purges_file_document_grants_and_reviews_and_audits_it(self):
+        document_id = self.upload_as_owner()
+        grant = self.client.post(
+            f"/api/documents/{document_id}/permissions",
+            json={"username": "viewer", "permission": "read"},
+            headers={"X-CSRF-Token": self.csrf()},
+        )
+        self.assertEqual(grant.status_code, 201)
+        stored_name = self._document(document_id)["stored_filename"]
+        stored_file = trustvault.UPLOADS / stored_name
+        self.assertTrue(stored_file.exists())
+
+        connection = trustvault.sqlite3.connect(trustvault.DATABASE)
+        owner_id = connection.execute(
+            "SELECT owner_id FROM documents WHERE id = ?", (document_id,)
+        ).fetchone()[0]
+        connection.execute(
+            """INSERT INTO document_reviews
+               (id, document_id, reviewer_id, created_at, privacy_score, risk_level, report_json)
+               VALUES ('expiry-review', ?, ?, ?, 50, 'moderate', '{}')""",
+            (document_id, owner_id, trustvault.now()),
+        )
+        connection.execute(
+            "UPDATE documents SET expires_at = ? WHERE id = ?",
+            ((datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds"), document_id),
+        )
+        connection.commit()
+        connection.close()
+
+        self.login("viewer", "viewerpass")
+        response = self.client.get(f"/api/documents/{document_id}/download")
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(stored_file.exists())
+        self.assertIsNone(self._document(document_id))
+        self.assertEqual(self._permissions(document_id), [])
+        self.assertEqual(self._reviews(document_id), [])
+        self.assertTrue(any(
+            event["action"] == "document.expired_and_purged" and event["document_id"] == document_id
+            for event in self._audit_events()
+        ))
 
     def test_granted_viewer_can_download_but_cannot_change_or_grant(self):
         document_id = self.upload_as_owner()
@@ -152,7 +218,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         smtp_server.starttls.assert_called_once()
         smtp_server.login.assert_called_once_with("smtp-user", "test-secret")
 
-    def test_existing_database_is_migrated_with_email_column(self):
+    def test_existing_database_is_migrated_with_email_and_expiry_columns(self):
         legacy_database = Path(self.temp.name) / "legacy.sqlite3"
         connection = trustvault.sqlite3.connect(legacy_database)
         connection.execute(
@@ -174,9 +240,11 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
             migrated = trustvault.sqlite3.connect(legacy_database)
             try:
                 columns = {row[1] for row in migrated.execute("PRAGMA table_info(users)")}
+                document_columns = {row[1] for row in migrated.execute("PRAGMA table_info(documents)")}
             finally:
                 migrated.close()
             self.assertIn("email", columns)
+            self.assertIn("expires_at", document_columns)
         finally:
             trustvault.DATABASE = original_database
 
@@ -363,6 +431,30 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
     def _audit_events(self):
         with trustvault.app.app_context():
             return [dict(row) for row in trustvault.db().execute("SELECT * FROM audit_events")]
+
+    def _document(self, document_id):
+        connection = trustvault.sqlite3.connect(trustvault.DATABASE)
+        connection.row_factory = trustvault.sqlite3.Row
+        row = connection.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+        connection.close()
+        return dict(row) if row else None
+
+    def _permissions(self, document_id):
+        connection = trustvault.sqlite3.connect(trustvault.DATABASE)
+        connection.row_factory = trustvault.sqlite3.Row
+        rows = connection.execute(
+            "SELECT * FROM permissions WHERE document_id = ?", (document_id,)
+        ).fetchall()
+        connection.close()
+        return [dict(row) for row in rows]
+
+    def _reviews(self, document_id):
+        connection = trustvault.sqlite3.connect(trustvault.DATABASE)
+        rows = connection.execute(
+            "SELECT id FROM document_reviews WHERE document_id = ?", (document_id,)
+        ).fetchall()
+        connection.close()
+        return rows
 
 
 if __name__ == "__main__":

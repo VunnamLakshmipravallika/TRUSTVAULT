@@ -9,6 +9,7 @@ import smtplib
 import sqlite3
 import ssl
 import sys
+import threading
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -68,6 +69,7 @@ def db():
         g.db = sqlite3.connect(DATABASE)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
+        g.db.execute("PRAGMA secure_delete = ON")
         g.db.execute("PRAGMA busy_timeout = 5000")
     return g.db
 
@@ -86,8 +88,88 @@ def initialize():
     user_columns = {row[1] for row in connection.execute("PRAGMA table_info(users)")}
     if "email" not in user_columns:
         connection.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    document_columns = {row[1] for row in connection.execute("PRAGMA table_info(documents)")}
+    if "expires_at" not in document_columns:
+        connection.execute("ALTER TABLE documents ADD COLUMN expires_at TEXT")
     connection.commit()
     connection.close()
+
+
+def parse_expiry(value):
+    if not value:
+        return None
+    try:
+        expiry = datetime.fromisoformat(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Expiry must be a valid date and time.") from error
+    if expiry.tzinfo is None or expiry.utcoffset() is None:
+        raise ValueError("Expiry must include a timezone.")
+    expiry = expiry.astimezone(timezone.utc)
+    if expiry <= datetime.now(timezone.utc):
+        raise ValueError("Expiry must be in the future.")
+    return expiry.isoformat(timespec="seconds")
+
+
+def purge_expired_documents():
+    connection = db()
+    expiry_cutoff = now()
+    expired = connection.execute(
+        """SELECT id, owner_id, stored_filename FROM documents
+           WHERE expires_at IS NOT NULL AND expires_at <= ?
+           ORDER BY expires_at""",
+        (expiry_cutoff,),
+    ).fetchall()
+    if not expired:
+        return
+
+    connection.execute("BEGIN IMMEDIATE")
+    expired = connection.execute(
+        """SELECT id, owner_id, stored_filename FROM documents
+           WHERE expires_at IS NOT NULL AND expires_at <= ?
+           ORDER BY expires_at""",
+        (now(),),
+    ).fetchall()
+    if not expired:
+        connection.rollback()
+        return
+
+    purged_count = 0
+    for document in expired:
+        path = UPLOADS / document["stored_filename"]
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            app.logger.exception("Could not remove expired document file %s", path.name)
+            continue
+        connection.execute("DELETE FROM permissions WHERE document_id = ?", (document["id"],))
+        connection.execute("DELETE FROM document_reviews WHERE document_id = ?", (document["id"],))
+        connection.execute("DELETE FROM documents WHERE id = ?", (document["id"],))
+        audit(None, "document.expired_and_purged", document["id"], {"owner_id": document["owner_id"]})
+        purged_count += 1
+    if not purged_count:
+        connection.rollback()
+
+
+@app.before_request
+def purge_expired_documents_before_request():
+    purge_expired_documents()
+
+
+def _expiry_worker():
+    while not _expiry_worker_stop.wait(5):
+        try:
+            with app.app_context():
+                purge_expired_documents()
+        except sqlite3.Error:
+            app.logger.exception("Expired-document cleanup failed")
+
+
+_expiry_worker_stop = threading.Event()
+
+
+def start_expiry_worker():
+    worker = threading.Thread(target=_expiry_worker, name="trustvault-expiry-cleanup", daemon=True)
+    worker.start()
 
 
 def send_access_email(recipient, owner_name, document_name, permission):
@@ -205,8 +287,9 @@ def document_access(document_id, minimum="read"):
            FROM documents d LEFT JOIN permissions p
              ON p.document_id = d.id AND p.user_id = ?
            JOIN users u ON u.id = d.owner_id
-           WHERE d.id = ? AND d.deleted_at IS NULL""",
-        (user["id"], user["id"], document_id),
+           WHERE d.id = ? AND d.deleted_at IS NULL
+             AND (d.expires_at IS NULL OR d.expires_at > ?)""",
+        (user["id"], user["id"], document_id, now()),
     ).fetchone()
     levels = {"read": 1, "edit": 2}
     if row is None or row["permission"] is None or levels.get(row["permission"], 0) < levels[minimum]:
@@ -349,8 +432,8 @@ def users():
 @require_auth
 def list_documents():
     user = current_user()
-    clauses = ["d.deleted_at IS NULL"]
-    params = []
+    clauses = ["d.deleted_at IS NULL", "(d.expires_at IS NULL OR d.expires_at > ?)"]
+    params = [now()]
     if user["role"] != "admin":
         clauses.append("(d.owner_id = ? OR p.user_id = ?)")
         params.extend([user["id"], user["id"]])
@@ -369,7 +452,7 @@ def list_documents():
             clauses.append(f"date(d.created_at) {operator} date(?)")
             params.append(value)
     rows = db().execute(
-        """SELECT d.id, d.name, d.category, d.mime_type, d.size_bytes, d.created_at,
+        """SELECT d.id, d.name, d.category, d.mime_type, d.size_bytes, d.created_at, d.expires_at,
                   u.display_name AS owner,
                   CASE WHEN d.owner_id = ? THEN 'edit'
                        WHEN ? = 'admin' AND p.permission IS NULL THEN 'admin_metadata'
@@ -409,6 +492,10 @@ def upload_document():
     category = str(request.form.get("category", "Uncategorised")).strip()[:80]
     if not title or not category:
         return jsonify(error="name_and_category_required"), 400
+    try:
+        expires_at = parse_expiry(request.form.get("expires_at", "").strip())
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
     document_id = str(uuid.uuid4())
     stored_name = f"{document_id}.{extension}"
     path = UPLOADS / stored_name
@@ -417,12 +504,15 @@ def upload_document():
         connection = db()
         connection.execute(
             """INSERT INTO documents
-               (id, owner_id, name, category, original_filename, stored_filename, mime_type, size_bytes, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (id, owner_id, name, category, original_filename, stored_filename, mime_type, size_bytes,
+                created_at, updated_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (document_id, user["id"], title, category, original_name,
-             stored_name, mimetypes.guess_type(original_name)[0] or "application/octet-stream", size, now(), now()),
+             stored_name, mimetypes.guess_type(original_name)[0] or "application/octet-stream",
+             size, now(), now(), expires_at),
         )
-        audit(user["id"], "document.uploaded", document_id, {"name": title, "category": category, "size": size})
+        audit(user["id"], "document.uploaded", document_id,
+              {"name": title, "category": category, "size": size, "expires_at": expires_at})
     except Exception:
         path.unlink(missing_ok=True)
         raise
@@ -438,8 +528,9 @@ def get_document(document_id):
             """SELECT d.*, u.display_name AS owner_name, p.permission
                FROM documents d JOIN users u ON u.id = d.owner_id
                LEFT JOIN permissions p ON p.document_id = d.id AND p.user_id = ?
-               WHERE d.id = ? AND d.deleted_at IS NULL""",
-            (user["id"], document_id),
+               WHERE d.id = ? AND d.deleted_at IS NULL
+                 AND (d.expires_at IS NULL OR d.expires_at > ?)""",
+            (user["id"], document_id, now()),
         ).fetchone()
         if row is None:
             audit(user["id"], "authorization.denied", document_id, {"action": "metadata"})
@@ -457,7 +548,8 @@ def get_document(document_id):
            WHERE p.document_id = ? ORDER BY u.username""", (document_id,)
     ).fetchall() if row["owner_id"] == user["id"] else []
     details = {key: row[key] for key in
-               ("id", "name", "category", "mime_type", "size_bytes", "created_at", "updated_at", "owner_name")}
+               ("id", "name", "category", "mime_type", "size_bytes", "created_at", "updated_at",
+                "expires_at", "owner_name")}
     details["permission"] = permission or ("admin_metadata" if metadata_only else None)
     return jsonify(document=details, grants=[dict(grant) for grant in grants])
 
@@ -739,5 +831,7 @@ if __name__ == "__main__":
         print("Database initialized. Demo users: admin, owner, viewer, outsider.")
     else:
         initialize()
+        with app.app_context():
+            purge_expired_documents()
+        start_expiry_worker()
         app.run(host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "5050")), debug=False)
-

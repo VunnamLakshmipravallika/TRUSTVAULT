@@ -42,6 +42,7 @@
     <label>Document name<input name="name" maxlength="200" required placeholder="e.g. Q4 service agreement"></label>
     <label>Category<input name="category" maxlength="80" required placeholder="e.g. Contracts"></label>
     <label class="file-pick">Choose a file<input name="file" type="file" accept=".pdf,.txt,.png,.jpg,.jpeg,.docx" required><small>PDF, TXT, PNG, JPEG, DOCX · 10 MB maximum</small></label>
+    <label>Expiry date and time (optional)<input name="expires_at" type="datetime-local"><small>Uses your device's local time. At expiry, the document and its saved reviews are permanently deleted.</small></label>
     <p id="upload-error" class="error"></p><div class="dialog-actions"><button type="button" class="button outline" data-close>Cancel</button><button class="button primary">Upload securely</button></div>
   </form></dialog>
   <dialog id="detail-dialog"><div id="detail-content"></div></dialog>
