@@ -86,6 +86,13 @@ This log is intentionally honest. The implementation work began before this Git 
 - **What was wrong / checked:** The first browser pass showed action-button labels wrapping at a narrow viewport, and cached templates initially hid the live changes until the server was restarted. I also checked that the sign-in and User ID forms still submit through the existing endpoints and selectors.
 - **What I did instead:** Kept the existing application flows and authorization logic intact, made action-button labels non-wrapping, corrected stylesheet order for the owner dashboard, and removed the remote font import. Verified 24 automated tests, JavaScript syntax, clean diff formatting, desktop owner dashboard and sign-in rendering, viewer User ID prompt, and no horizontal overflow at a 390px viewport. **Commit:** [`360b6bb`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/360b6bb).
 
+### 2026-10-24 — Viewer account self-registration
+
+- **Prompt:** Let a person who cannot log in create an account; the user also shared a Vercel deployment URL.
+- **Produced:** A CSRF-protected public registration form and API that create viewer-only accounts, hash passwords, reject invalid or duplicate usernames, and audit registration. Owners and admins cannot be selected through public registration.
+- **What was wrong / checked:** Browser testing found the username `pattern` needed an escaped hyphen for modern browsers' Unicode Sets (`v`) regular-expression mode. I fixed it and verified the form, successful registration, subsequent login, and the viewer User ID step. The shared Vercel URL serves a separate frontend that calls `trustvault-wkaj.onrender.com`; its health request currently fails due to a CORS error, and this Flask repository has no Vercel deployment configuration, so the local feature change does not by itself repair or update that deployment.
+- **What I did instead:** Escaped the username pattern, assigned the role server-side as `viewer`, left new users without document grants, and added tests for viewer-only role enforcement, password and username validation, case-insensitive duplicates, CSRF, and login. All 28 tests passed. **Commit:** [`f885d33`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/f885d33).
+
 ### Future entries
 
 Continue adding dated entries as you use AI. At least two entries should cover authorization, access control, or the audit trail. Each entry must state the prompt, actual output, a specific defect or verification result, and the real commit URL/SHA for any correction. Do not invent dates, prompt details, or commit links.
