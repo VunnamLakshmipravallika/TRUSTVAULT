@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrustVault · Sign in</title><link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <div class="brand-mark">T</div><p class="eyebrow">PRIVATE DOCUMENT WORKSPACE</p>
+    <h1>Welcome to TrustVault</h1><p class="muted">Sign in to securely access your documents.</p>
+    <form id="login-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Username<input name="username" autocomplete="username" required autofocus></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="button primary full" type="submit">Sign in <span>→</span></button>
+      <p class="error" id="login-error" role="alert"></p>
+    </form>
+    <p class="hint">Demo credentials are listed in README.md.</p>
+  </main>
+  <script>
+    const form = document.querySelector("#login-form");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const response = await fetch("/api/login", {
+        method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": form.csrf_token.value},
+        body: JSON.stringify({username: form.username.value, password: form.password.value})
+      });
+      if (response.ok) location.href = "/";
+      else document.querySelector("#login-error").textContent = "Sign-in failed. Check your credentials and try again.";
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrustVault · Documents</title><link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark small">T</span> TrustVault</a>
+    <div class="account"><span class="avatar">{{ user.display_name[0] }}</span><span>{{ user.display_name }}<small>{{ user.role }}</small></span>
+      <form action="/logout" method="post" class="logout-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="text-button" type="submit">Sign out</button></form>
+    </div>
+  </header>
+  <main class="layout">
+    <aside class="sidebar">
+      <p class="eyebrow">WORKSPACE</p><a class="nav-link active" href="/">▦ &nbsp; Documents</a>
+      {% if user.role == 'admin' %}<a class="nav-link" href="#activity" id="activity-link">◷ &nbsp; Activity log</a>{% endif %}
+      <section class="sidebar-note"><span class="shield">✓</span><b>Protected by design</b><p>Every file request is checked against its current document grant.</p></section>
+    </aside>
+    <section class="content">
+      <div class="heading-row"><div><p class="eyebrow">YOUR SECURE WORKSPACE</p><h1>Documents</h1>
+      <p class="muted">{% if user.role == 'admin' %}You can review document metadata; file contents still require an explicit grant.{% else %}Only you and people explicitly granted access can see each file.{% endif %}</p></div>
+      <div class="heading-actions">
+        {% if user.role == 'admin' %}<button id="activity-open" class="button outline">◷ &nbsp; Activity log</button>{% endif %}
+        {% if user.role == 'owner' %}<button id="upload-open" class="button primary">＋ &nbsp; Upload document</button>{% endif %}
+      </div></div>
+      <section class="filter-bar">
+        <label class="search">⌕ <input id="filter-name" placeholder="Search document name…"></label>
+        <input id="filter-owner" placeholder="Owner"><input id="filter-category" placeholder="Category">
+        <label class="date-field">From <input id="filter-from" type="date"></label>
+        <label class="date-field">To <input id="filter-to" type="date"></label>
+        <button class="button outline" id="search">Search</button>
+      </section>
+      <div class="table-wrap"><table><thead><tr><th>DOCUMENT</th><th>CATEGORY</th><th>OWNER</th><th>ACCESS</th><th>ADDED</th><th></th></tr></thead>
+        <tbody id="documents"></tbody></table>
+        <div id="empty" class="empty hidden"><div>▤</div><b>No documents found</b><p>Upload a document or adjust your search.</p></div>
+      </div>
+      {% if user.role == 'admin' %}<section id="activity" class="activity-panel hidden"><div class="panel-heading"><div><p class="eyebrow">ADMINISTRATION</p><h2>Activity log</h2></div><span id="chain-status" class="badge"></span></div><div id="activity-events"></div></section>{% endif %}
+    </section>
+  </main>
+  <dialog id="upload-dialog"><form id="upload-form"><div class="dialog-title"><h2>Upload document</h2><button type="button" class="text-button close" data-close>✕</button></div>
+    <label>Document name<input name="name" maxlength="200" required placeholder="e.g. Q4 service agreement"></label>
+    <label>Category<input name="category" maxlength="80" required placeholder="e.g. Contracts"></label>
+    <label class="file-pick">Choose a file<input name="file" type="file" accept=".pdf,.txt,.png,.jpg,.jpeg,.docx" required><small>PDF, TXT, PNG, JPEG, DOCX · 10 MB maximum</small></label>
+    <p id="upload-error" class="error"></p><div class="dialog-actions"><button type="button" class="button outline" data-close>Cancel</button><button class="button primary">Upload securely</button></div>
+  </form></dialog>
+  <dialog id="detail-dialog"><div id="detail-content"></div></dialog>
+  <div id="toast" role="status"></div>
+  <script>window.TRUSTVAULT = {role: {{ user.role|tojson }}, csrf: {{ csrf_token|tojson }}};</script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
