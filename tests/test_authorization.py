@@ -21,7 +21,6 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
             os.environ,
             {
                 "TRUSTVAULT_OWNER_PASSWORD": "ownerpass-test-123",
-                "TRUSTVAULT_ADMIN_INVITE_CODE": "",
             },
         )
         self.owner_settings.start()
@@ -260,71 +259,33 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(approved_login.status_code, 200)
         self.assertTrue(approved_login.json["identity_required"])
 
-    def test_private_admin_invitation_activates_only_matching_registration(self):
-        invitation = "test-only-admin-invitation-code-with-32-plus-characters"
-        with patch.dict(os.environ, {"TRUSTVAULT_ADMIN_INVITE_CODE": invitation}):
-            with self.client.session_transaction() as session:
-                session["csrf_token"] = "test-csrf"
-            password = "invited-admin-password-123"
-            registration = self.client.post(
-                "/api/register",
-                json={
-                    "username": "invited-admin",
-                    "display_name": "Invited Admin",
-                    "password": password,
-                    "password_confirmation": password,
-                    "requested_role": "admin",
-                    "admin_invite_code": invitation,
-                },
-                headers={"X-CSRF-Token": "test-csrf"},
-            )
-            self.assertEqual(registration.status_code, 201)
-            self.assertFalse(registration.json["pending_approval"])
-            self.assertEqual(registration.json["user"]["role"], "admin")
-            self.assertEqual(registration.json["user"]["account_status"], "active")
-
-            wrong_code = self.client.post(
-                "/api/register",
-                json={
-                    "username": "wrong-invite-admin",
-                    "display_name": "Wrong Invite Admin",
-                    "password": password,
-                    "password_confirmation": password,
-                    "requested_role": "admin",
-                    "admin_invite_code": "incorrect-invitation-code",
-                },
-                headers={"X-CSRF-Token": "test-csrf"},
-            )
-            self.assertEqual(wrong_code.status_code, 202)
-            self.assertTrue(wrong_code.json["pending_approval"])
-            self.assertEqual(wrong_code.json["user"]["role"], "viewer")
-
-            login = self.client.post(
-                "/api/login",
-                json={"username": "invited-admin", "password": password, "role": "admin"},
-                headers={"X-CSRF-Token": "test-csrf"},
-            )
-            self.assertEqual(login.status_code, 200)
-            self.assertTrue(login.json["identity_required"])
-            with trustvault.app.app_context():
-                event = trustvault.db().execute(
-                    """SELECT action, details FROM audit_events
-                       WHERE action = 'account.admin_registered_by_invite'"""
-                ).fetchone()
-                self.assertIsNotNone(event)
-                self.assertNotIn(invitation, event["details"])
-                self.assertTrue(trustvault.verify_audit_chain())
-
-    def test_local_admin_invitation_configuration_stores_only_a_private_hash(self):
-        invitation = "local-admin-invitation-code-with-at-least-32-chars"
-        trustvault.configure_admin_invite_code(invitation)
-        invite_file = trustvault.INSTANCE / ".admin-invite-hash"
-        self.assertEqual(invite_file.stat().st_mode & 0o777, 0o600)
-        self.assertNotIn(invitation, invite_file.read_text())
-        self.assertTrue(trustvault.valid_admin_invite_code(invitation))
-        self.assertFalse(trustvault.valid_admin_invite_code("incorrect-admin-invitation-code-32chars"))
-        with self.assertRaisesRegex(ValueError, "between 32 and 256 characters"):
-            trustvault.configure_admin_invite_code("too-short")
+    def test_public_admin_registration_cannot_bypass_existing_admin_approval(self):
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "test-csrf"
+        password = "pending-admin-password-123"
+        registration = self.client.post(
+            "/api/register",
+            json={
+                "username": "invite-field-ignored",
+                "display_name": "Invite Field Ignored",
+                "password": password,
+                "password_confirmation": password,
+                "requested_role": "admin",
+                "admin_invite_code": "arbitrary-client-value",
+            },
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(registration.status_code, 202)
+        self.assertTrue(registration.json["pending_approval"])
+        self.assertEqual(registration.json["user"]["role"], "viewer")
+        self.assertEqual(registration.json["user"]["account_status"], "pending")
+        blocked_login = self.client.post(
+            "/api/login",
+            json={"username": "invite-field-ignored", "password": password, "role": "admin"},
+            headers={"X-CSRF-Token": "test-csrf"},
+        )
+        self.assertEqual(blocked_login.status_code, 403)
+        self.assertEqual(blocked_login.json["error"], "account_pending_approval")
 
     def test_production_bootstrap_creates_only_configured_owner_and_admin(self):
         admin_password = "production-admin-password-123"
@@ -567,7 +528,8 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         registration_page = self.client.get("/register")
         self.assertIn(b'name="requested_role" value="viewer"', registration_page.data)
         self.assertIn(b'name="requested_role" value="admin"', registration_page.data)
-        self.assertIn(b"private Admin invitation code", registration_page.data)
+        self.assertIn(b"existing administrator must approve", registration_page.data)
+        self.assertNotIn(b"admin_invite_code", registration_page.data)
 
     def test_authenticated_user_cannot_create_an_additional_account(self):
         self.login("owner", "ownerpass-test-123")

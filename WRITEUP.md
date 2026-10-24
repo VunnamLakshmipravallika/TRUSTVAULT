@@ -15,7 +15,7 @@ TrustVault addresses this with named, per-document grants and server-side author
 ## 2. What actually works right now
 
 - Role-selected sign-in for administrator, document-owner, and viewer accounts. The Owner option opens a dedicated sign-in page; only `pravallika` can authenticate as owner. Its password is set interactively with `python app.py --configure-owner` and stored as a hash. Changing the owner password invalidates existing owner sessions.
-- Public registration offers Viewer or Admin. Viewers activate immediately with no document grants. Admin accounts activate immediately only with the privately configured invitation code; otherwise they remain pending until an existing administrator approves them. Pending/rejected accounts cannot log in as Admin, and invitation-based activation and manual decisions are audited. Owner accounts cannot self-register.
+- Public registration offers Viewer or Admin. Viewers activate immediately with no document grants. Every Admin signup remains pending until an existing active administrator approves it; pending/rejected accounts cannot sign in as Admin. Approval and rejection are audited. Owner accounts cannot self-register.
 - Owner upload, search/filter, metadata editing, soft deletion, and private file download.
 - Per-document `read` and `edit` grants to named accounts, with owner-controlled grant and revocation.
 - Authorization checks on document routes, including download and review; revocation blocks the next request. A file already downloaded cannot be recalled.
@@ -64,7 +64,7 @@ Run the tests in another terminal from the repository root:
 python -m unittest discover -s tests -v
 ```
 
-All 39 tests passed in local verification on 2026-10-24. Tests cover Admin invitation activation and rejection of invalid codes. A separate isolated smoke test verified the production bootstrap creates only the configured Owner/Admin accounts and that Gunicorn serves `/health`. This does not verify a public deployment. Do not use the seeded passwords for a shared or production system.
+All 38 tests passed in local verification on 2026-10-24. Tests cover Admin requests, role escalation resistance, and approval/rejection. A separate isolated smoke test verified the production bootstrap creates only the configured Owner/Admin accounts and that Gunicorn serves `/health`. This does not verify a public deployment. Do not use the seeded passwords for a shared or production system.
 
 ## 4. AI tools used
 

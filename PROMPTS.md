@@ -121,6 +121,13 @@ This log is intentionally honest. The implementation work began before this Git 
 - **What was wrong / checked:** Removing approval and making every public Admin signup active would allow any visitor to self-assign administrator privileges. Also, storing the invitation in plain text would unnecessarily expose a credential if the local instance directory were read.
 - **What I did instead:** Added constant-time verification of environment-configured codes and a local setup command that stores only a SHA-256 digest with owner-only file permissions. Audits record invitation activation without the code. Added tests for valid/invalid invitation behavior, safe local storage, continued approval flow, and sign-in. All 39 tests passed, and browser testing confirmed the Admin-only invitation field appears, the Viewer choice hides it, and the signup page has no horizontal overflow at 390px. **Commit:** [`462e5dc`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/462e5dc91061ff7fcb750c6807f5d3c6b032c333).
 
+### 2026-10-24 — Removing Admin invitation codes
+
+- **Prompt:** The user clarified that they do not want an Admin invitation code and chose to keep approval by an existing Admin.
+- **Produced:** Removed the invitation field, configuration command, local hash-file logic, environment variable, and deployment setting. Public Admin registrations remain pending; arbitrary invitation values cannot bypass approval.
+- **What was wrong / checked:** Immediate Admin activation without an invitation would let any public registrant gain administrator privileges. I preserved the existing server-side approval guard instead of weakening it.
+- **What I did instead:** Restored the simple approve/reject-only flow, retained role-escalation regression coverage, and updated setup, deployment, threat, and submission docs. Verified all 38 tests pass and browser-checked the Admin registration copy, absence of any invite field, and zero horizontal overflow at a 390px viewport. **Commit:** add the actual commit link after committing this correction.
+
 ### Future entries
 
 Continue adding dated entries as you use AI. At least two entries should cover authorization, access control, or the audit trail. Each entry must state the prompt, actual output, a specific defect or verification result, and the real commit URL/SHA for any correction. Do not invent dates, prompt details, or commit links.
