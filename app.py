@@ -12,7 +12,7 @@ import sys
 import threading
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from functools import wraps
 from pathlib import Path
@@ -825,6 +825,78 @@ def owner_login_activity():
             "self_reported_user_id": identities_by_login.get(login_event_id),
         })
     response = jsonify(entries=logins)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@app.get("/api/owner/dashboard")
+@require_auth
+def owner_dashboard():
+    user = current_user()
+    if user["role"] != "owner":
+        audit(user["id"], "authorization.denied", details={"path": request.path, "reason": "owner_required"})
+        return jsonify(error="not_found"), 404
+
+    current_time = datetime.now(timezone.utc)
+    current_timestamp = current_time.isoformat(timespec="seconds")
+    cutoff = (current_time + timedelta(days=7)).isoformat(timespec="seconds")
+    connection = db()
+    documents = connection.execute(
+        """SELECT COUNT(*) AS total_documents,
+                  SUM(CASE WHEN EXISTS (
+                      SELECT 1 FROM permissions p WHERE p.document_id = d.id
+                  ) THEN 1 ELSE 0 END) AS shared_documents,
+                  SUM(CASE WHEN d.expires_at IS NOT NULL AND d.expires_at > ?
+                                     AND d.expires_at <= ? THEN 1 ELSE 0 END)
+                      AS expiring_soon
+           FROM documents d
+           WHERE d.owner_id = ? AND d.deleted_at IS NULL
+             AND (d.expires_at IS NULL OR d.expires_at > ?)""",
+        (current_timestamp, cutoff, user["id"], current_timestamp),
+    ).fetchone()
+    grants = connection.execute(
+        """SELECT COUNT(*) AS active_grants
+           FROM permissions p JOIN documents d ON d.id = p.document_id
+           WHERE d.owner_id = ? AND d.deleted_at IS NULL
+             AND (d.expires_at IS NULL OR d.expires_at > ?)""",
+        (user["id"], current_timestamp),
+    ).fetchone()["active_grants"]
+    recent_activity = connection.execute(
+        """SELECT a.occurred_at, a.action, a.details, a.document_id,
+                  d.name AS document_name, u.username AS actor_username
+           FROM audit_events a
+           JOIN documents d ON d.id = a.document_id
+           LEFT JOIN users u ON u.id = a.actor_id
+           WHERE d.owner_id = ?
+             AND (a.action = 'document.expired_and_purged' OR d.deleted_at IS NULL)
+             AND a.action IN (
+                 'document.uploaded', 'document.downloaded', 'document.updated',
+                 'document.deleted', 'document.expired_and_purged',
+                 'permission.granted', 'permission.revoked', 'authorization.denied'
+             )
+           ORDER BY a.sequence DESC
+           LIMIT 10""",
+        (user["id"],),
+    ).fetchall()
+    response = jsonify(
+        stats={
+            "total_documents": documents["total_documents"] or 0,
+            "shared_documents": documents["shared_documents"] or 0,
+            "active_grants": grants,
+            "expiring_soon": documents["expiring_soon"] or 0,
+        },
+        recent_activity=[
+            {
+                "occurred_at": row["occurred_at"],
+                "action": row["action"],
+                "details": json.loads(row["details"]),
+                "document_id": row["document_id"],
+                "document_name": row["document_name"],
+                "actor_username": row["actor_username"] or "System",
+            }
+            for row in recent_activity
+        ],
+    )
     response.headers["Cache-Control"] = "private, no-store"
     return response
 

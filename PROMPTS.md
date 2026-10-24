@@ -72,6 +72,13 @@ This log is intentionally honest. The implementation work began before this Git 
 - **What was wrong / checked:** Users who had authenticated but had not yet submitted their optional prompt value were omitted, and the account username was not presented as the primary column. The dashboard also did not show a loading/error row when the API request failed.
 - **What I did instead:** Added a unique login-event ID to successful-login and self-reported-ID audit entries; changed the owner API to list successful admin/viewer logins with the authenticated account username, role, timestamp, and optional self-report; made the panel open and refresh explicitly; and added a regression test for login visibility before ID submission. **Commit:** [`630af8d`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/630af8d8402e44db6ced0c428d12dcc680b01da2).
 
+### 2026-10-24 — Owner dashboard overview
+
+- **Prompt:** Create a dashboard for the document owner.
+- **Produced:** An owner-only dashboard with active-document, shared-document, active-grant, and seven-day expiry metrics plus recent document activity.
+- **What was wrong / checked:** Dashboard summaries must not aggregate or expose other owners' documents, and UI-only role gating would not protect the endpoint.
+- **What I did instead:** Added an owner-authorized API that scopes metrics and event history to the authenticated owner's documents, rendered responsive summary cards and an activity table in the owner workspace, and tested correct counts, recent activity, and isolation from another owner's records. **Commit:** to be added after the dashboard changes are committed.
+
 ### Future entries
 
 Continue adding dated entries as you use AI. At least two entries should cover authorization, access control, or the audit trail. Each entry must state the prompt, actual output, a specific defect or verification result, and the real commit URL/SHA for any correction. Do not invent dates, prompt details, or commit links.

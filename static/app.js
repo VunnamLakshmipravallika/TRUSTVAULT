@@ -40,6 +40,37 @@ async function loadDocuments() {
   } catch (error) { toast(error.message); }
 }
 
+async function loadOwnerDashboard() {
+  const refreshButton = document.querySelector("#owner-dashboard-refresh");
+  if (!refreshButton) return;
+  refreshButton.disabled = true;
+  try {
+    const {stats, recent_activity: events} = await api("/api/owner/dashboard");
+    document.querySelector("#dashboard-total-documents").textContent = stats.total_documents;
+    document.querySelector("#dashboard-shared-documents").textContent = stats.shared_documents;
+    document.querySelector("#dashboard-active-grants").textContent = stats.active_grants;
+    document.querySelector("#dashboard-expiring-soon").textContent = stats.expiring_soon;
+
+    const tbody = document.querySelector("#owner-dashboard-events");
+    tbody.innerHTML = "";
+    document.querySelector("#owner-dashboard-empty").classList.toggle("hidden", events.length !== 0);
+    for (const event of events) {
+      const row = document.createElement("tr");
+      const action = event.action.replace(/^document\./, "").replace(/^permission\./, "access ")
+        .replaceAll(".", " ").replaceAll("_", " ");
+      row.innerHTML = `<td>${escapeHtml(action)}</td>
+        <td>${escapeHtml(event.document_name)}</td>
+        <td>${escapeHtml(event.actor_username)}</td>
+        <td>${escapeHtml(new Date(event.occurred_at).toLocaleString())}</td>`;
+      tbody.append(row);
+    }
+  } catch (error) {
+    toast(`Could not load owner dashboard: ${error.message}`);
+  } finally {
+    refreshButton.disabled = false;
+  }
+}
+
 function escapeHtml(value) {
   const div = document.createElement("div");
   div.textContent = value ?? "";
@@ -104,16 +135,17 @@ async function openDocument(id) {
             toast("Access granted. No email notification was requested.");
           }
           openDocument(id);
+          loadOwnerDashboard();
         }
         catch (error) { toast(error.message); }
       });
       content.querySelectorAll("[data-revoke]").forEach(button => button.addEventListener("click", async () => {
-        try { await api(`/api/documents/${id}/permissions/${encodeURIComponent(button.dataset.revoke)}`, {method: "DELETE"}); toast("Access revoked immediately."); openDocument(id); }
+        try { await api(`/api/documents/${id}/permissions/${encodeURIComponent(button.dataset.revoke)}`, {method: "DELETE"}); toast("Access revoked immediately."); openDocument(id); loadOwnerDashboard(); }
         catch (error) { toast(error.message); }
       }));
       content.querySelector("#delete-document").addEventListener("click", async () => {
         if (!confirm("Delete this document? It will no longer be available to anyone.")) return;
-        try { await api(`/api/documents/${id}`, {method: "DELETE"}); document.querySelector("#detail-dialog").close(); toast("Document deleted."); loadDocuments(); }
+        try { await api(`/api/documents/${id}`, {method: "DELETE"}); document.querySelector("#detail-dialog").close(); toast("Document deleted."); loadDocuments(); loadOwnerDashboard(); }
         catch (error) { toast(error.message); }
       });
     }
@@ -162,6 +194,7 @@ document.querySelector("#upload-form").addEventListener("submit", async event =>
     event.currentTarget.reset();
     toast("Document uploaded securely.");
     loadDocuments();
+    loadOwnerDashboard();
   } catch (error) { document.querySelector("#upload-error").textContent = error.message; }
 });
 async function toggleActivity(event) {
@@ -211,4 +244,6 @@ async function loadUserLoginActivity() {
 document.querySelector("#user-login-activity-link")?.addEventListener("click", toggleUserLoginActivity);
 document.querySelector("#user-login-activity-open")?.addEventListener("click", toggleUserLoginActivity);
 document.querySelector("#user-login-activity-refresh")?.addEventListener("click", loadUserLoginActivity);
+document.querySelector("#owner-dashboard-refresh")?.addEventListener("click", loadOwnerDashboard);
 loadDocuments();
+loadOwnerDashboard();

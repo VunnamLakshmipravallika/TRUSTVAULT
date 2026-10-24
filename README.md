@@ -102,6 +102,7 @@ All mutation calls require the session CSRF token in `X-CSRF-Token`. Obtain it f
 | `POST /logout` | Authenticated browser session | CSRF-protected sign-out followed by redirect to sign-in |
 | `GET /api/me` | Authenticated user | Current identity and CSRF token |
 | `GET /api/users` | Owner | Named recipients available for grants |
+| `GET /api/owner/dashboard` | Owner | Owner-scoped document, sharing, expiry, and recent activity summary |
 | `GET /api/documents` | Authenticated user | Owner/viewer search only owned or granted documents; admin sees all active metadata |
 | `POST /api/documents` | Owner role | Upload an allowlisted document; optional `expires_at` is a timezone-aware ISO-8601 timestamp |
 | `GET /api/documents/{id}` | Owner, granted `read`/`edit` user, or admin | Read metadata; admin receives metadata-only access; owner also gets grants |

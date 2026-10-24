@@ -271,6 +271,67 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
                         headers={"X-CSRF-Token": login.json["csrf_token"]},
                     ).status_code, 200)
                 self.assertEqual(client.get("/api/owner/login-activity").status_code, 404)
+                self.assertEqual(client.get("/api/owner/dashboard").status_code, 404)
+
+    def test_owner_dashboard_shows_owned_document_shares_expiry_and_activity(self):
+        expiry = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(timespec="seconds")
+        document_id = self.upload_as_owner(expiry)
+        grant = self.client.post(
+            f"/api/documents/{document_id}/permissions",
+            json={"username": "viewer", "permission": "read"},
+            headers={"X-CSRF-Token": self.csrf()},
+        )
+        self.assertEqual(grant.status_code, 201)
+
+        response = self.client.get("/api/owner/dashboard")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "private, no-store")
+        self.assertEqual(response.json["stats"], {
+            "total_documents": 1,
+            "shared_documents": 1,
+            "active_grants": 1,
+            "expiring_soon": 1,
+        })
+        self.assertTrue(any(
+            event["document_id"] == document_id and event["action"] == "permission.granted"
+            for event in response.json["recent_activity"]
+        ))
+
+    def test_owner_dashboard_does_not_include_another_owners_documents(self):
+        own_document_id = self.upload_as_owner()
+        connection = trustvault.sqlite3.connect(trustvault.DATABASE)
+        from werkzeug.security import generate_password_hash
+        connection.execute(
+            """INSERT INTO users(username, display_name, role, password_hash, created_at, email)
+               VALUES ('second-owner', 'Second Owner', 'owner', ?, ?, 'second@example.test')""",
+            (generate_password_hash("secondpass"), trustvault.now()),
+        )
+        second_owner_id = connection.execute(
+            "SELECT id FROM users WHERE username = 'second-owner'"
+        ).fetchone()[0]
+        other_document_id = "another-owners-document"
+        connection.execute(
+            """INSERT INTO documents
+               (id, owner_id, name, category, original_filename, stored_filename, mime_type,
+                size_bytes, created_at, updated_at)
+               VALUES (?, ?, 'Private other', 'Other', 'other.txt', 'other.txt',
+                       'text/plain', 10, ?, ?)""",
+            (other_document_id, second_owner_id, trustvault.now(), trustvault.now()),
+        )
+        connection.commit()
+        connection.close()
+
+        response = self.client.get("/api/owner/dashboard")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["stats"]["total_documents"], 1)
+        self.assertTrue(all(
+            event["document_id"] != other_document_id
+            for event in response.json["recent_activity"]
+        ))
+        self.assertTrue(any(
+            event["document_id"] == own_document_id
+            for event in response.json["recent_activity"]
+        ))
 
     def test_granted_viewer_can_download_but_cannot_change_or_grant(self):
         document_id = self.upload_as_owner()

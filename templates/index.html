@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TrustVault · Documents</title><link rel="stylesheet" href="/static/style.css">
+  {% if user.role == 'owner' %}<link rel="stylesheet" href="/static/owner-dashboard.css">{% endif %}
 </head>
 <body>
   <header class="topbar">
@@ -26,6 +27,24 @@
         {% if user.role == 'owner' %}<button id="user-login-activity-open" class="button outline">♙ &nbsp; User sign-ins</button>{% endif %}
         {% if user.role == 'owner' %}<button id="upload-open" class="button primary">＋ &nbsp; Upload document</button>{% endif %}
       </div></div>
+      {% if user.role == 'owner' %}
+      <section class="owner-dashboard" aria-label="Owner dashboard">
+        <div class="dashboard-heading"><div><p class="eyebrow">OWNER OVERVIEW</p><h2>Your document activity</h2></div><button type="button" class="button outline" id="owner-dashboard-refresh">Refresh</button></div>
+        <div class="dashboard-cards">
+          <article class="dashboard-card"><span class="dashboard-icon">▤</span><div><small>Active documents</small><strong id="dashboard-total-documents">—</strong></div></article>
+          <article class="dashboard-card"><span class="dashboard-icon">♧</span><div><small>Documents shared</small><strong id="dashboard-shared-documents">—</strong></div></article>
+          <article class="dashboard-card"><span class="dashboard-icon">♙</span><div><small>Active access grants</small><strong id="dashboard-active-grants">—</strong></div></article>
+          <article class="dashboard-card"><span class="dashboard-icon warning">◷</span><div><small>Expiring in 7 days</small><strong id="dashboard-expiring-soon">—</strong></div></article>
+        </div>
+        <div class="dashboard-activity">
+          <div class="panel-heading"><div><p class="eyebrow">RECENT EVENTS</p><h3>Document activity</h3></div></div>
+          <div class="table-wrap"><table><thead><tr><th>EVENT</th><th>DOCUMENT</th><th>ACCOUNT</th><th>DATE &amp; TIME</th></tr></thead>
+            <tbody id="owner-dashboard-events"></tbody></table>
+            <div id="owner-dashboard-empty" class="empty hidden"><b>No document activity yet</b></div>
+          </div>
+        </div>
+      </section>
+      {% endif %}
       <section class="filter-bar">
         <label class="search">⌕ <input id="filter-name" placeholder="Search document name…"></label>
         <input id="filter-owner" placeholder="Owner"><input id="filter-category" placeholder="Category">
