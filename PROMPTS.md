@@ -77,7 +77,7 @@ This log is intentionally honest. The implementation work began before this Git 
 - **Prompt:** Create a dashboard for the document owner.
 - **Produced:** An owner-only dashboard with active-document, shared-document, active-grant, and seven-day expiry metrics plus recent document activity.
 - **What was wrong / checked:** Dashboard summaries must not aggregate or expose other owners' documents, and UI-only role gating would not protect the endpoint.
-- **What I did instead:** Added an owner-authorized API that scopes metrics and event history to the authenticated owner's documents, rendered responsive summary cards and an activity table in the owner workspace, and tested correct counts, recent activity, and isolation from another owner's records. **Commit:** to be added after the dashboard changes are committed.
+- **What I did instead:** Added an owner-authorized API that scopes metrics and event history to the authenticated owner's documents, rendered responsive summary cards and an activity table in the owner workspace, and tested correct counts, recent activity, and isolation from another owner's records. **Commit:** [`44ff427`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/44ff427dd6cd40c18163dcb747926094fbf7a745).
 
 ### Future entries
 
