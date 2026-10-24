@@ -2,24 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TrustVault · User ID</title><link rel="stylesheet" href="/static/style.css">
+  <title>TrustVault · User ID</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/theme.css">
 </head>
 <body class="login-page">
   <main class="login-card">
-    <div class="brand-mark">T</div><p class="eyebrow">SECURE WORKSPACE</p>
-    <h1>Enter your User ID</h1>
-    <p class="muted">Signed in as {{ user.display_name }} ({{ user.role }}). Enter your User ID to continue.</p>
-    <p class="hint">This ID is self-reported and will be visible to the document owner with your account role and submission time.</p>
-    <form id="user-id-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label>User ID<input name="user_id" maxlength="100" autocomplete="off" required autofocus></label>
-      <button class="button primary full" type="submit">Continue to workspace <span>→</span></button>
-      <p class="error" id="user-id-error" role="alert"></p>
-    </form>
-    <form action="/logout" method="post" class="logout-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="text-button" type="submit">Sign out</button>
-    </form>
+    <section class="auth-visual">
+      <a class="auth-brand" href="/"><span class="brand-mark">T</span><span>TrustVault</span></a>
+      <div class="auth-art" aria-hidden="true"><span class="art-orbit"></span><span class="art-lock">✓</span><span class="art-file">SECURE<br>SESSION</span></div>
+      <div class="auth-message"><p class="eyebrow">ONE LAST STEP</p><h2>Security starts<br>with knowing.</h2><p>Your account is authenticated. Add the ID you use to identify yourself.</p></div>
+      <div class="auth-proof"><span>PRIVATE</span> Self-reported identity <span>RECORDED</span></div>
+    </section>
+    <section class="auth-content">
+      <div class="auth-mobile-brand"><span class="brand-mark">T</span><span>TrustVault</span></div>
+      <p class="eyebrow">SECURE WORKSPACE</p>
+      <h1>Confirm your User ID</h1>
+      <p class="muted">Signed in as <strong>{{ user.display_name }}</strong> · {{ user.role }}</p>
+      <p class="hint identity-hint">This ID is self-reported. The document owner can see it with your account name, role, and submission time.</p>
+      <form id="user-id-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>User ID<input name="user_id" maxlength="100" autocomplete="off" required autofocus placeholder="Enter your User ID"></label>
+        <button class="button primary full" type="submit">Continue to workspace <span>→</span></button>
+        <p class="error" id="user-id-error" role="alert"></p>
+      </form>
+      <form action="/logout" method="post" class="logout-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="text-button" type="submit">Sign out</button>
+      </form>
+    </section>
   </main>
   <script>
     const form = document.querySelector("#user-id-form");
