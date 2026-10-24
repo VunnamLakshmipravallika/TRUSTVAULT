@@ -49,7 +49,7 @@ Choose Admin or Viewer on the sign-in page; the selected role is checked against
 
 ### Create an account
 
-People who do not have an account can use **Create an account** on the sign-in page and choose Viewer or Admin. Viewer accounts activate immediately and start with no document permissions; an owner must grant access to each document. Choosing Admin creates a pending request, not an administrator account. The user cannot sign in until an existing admin approves the request in the **Admin requests** panel. Approval and rejection are audited; a rejected request remains unable to sign in. Owner accounts are not available through public registration. The server assigns roles and statuses regardless of client-supplied role fields. Email verification, password recovery, and registration rate limiting are not implemented.
+People who do not have an account can use **Create an account** on the sign-in page and choose Viewer or Admin. Viewer accounts activate immediately and start with no document permissions; an owner must grant access to each document. Choosing Admin creates a pending request, not an administrator account. The applicant cannot sign in as Admin or review their own request. An existing active Admin must sign in, complete the User ID step, and approve the request in **Admin requests**; pending requests are shown automatically in that Admin's workspace. Approval and rejection are audited; a rejected request remains unable to sign in. Owner accounts are not available through public registration. The server assigns roles and statuses regardless of client-supplied role fields. Email verification, password recovery, and registration rate limiting are not implemented.
 
 ## Email notifications for access grants
 

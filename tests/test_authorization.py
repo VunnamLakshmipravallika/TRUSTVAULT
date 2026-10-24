@@ -172,6 +172,9 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertTrue(registration.json["pending_approval"])
         self.assertEqual(registration.json["user"]["role"], "viewer")
         self.assertEqual(registration.json["user"]["account_status"], "pending")
+        confirmation_page = self.client.get("/?registered=admin-pending")
+        self.assertIn(b"Sign in with an existing active Admin account", confirmation_page.data)
+        self.assertIn(b"cannot review its own request", confirmation_page.data)
 
         with trustvault.app.app_context():
             applicant = trustvault.db().execute(
@@ -212,6 +215,9 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
             headers={"X-CSRF-Token": admin_login.json["csrf_token"]},
         )
         self.assertEqual(admin_identity.status_code, 200)
+        admin_dashboard = admin_client.get("/")
+        self.assertIn(b'id="admin-account-requests"', admin_dashboard.data)
+        self.assertIn(b"data-admin-request-count", admin_dashboard.data)
 
         requests = admin_client.get("/api/admin/account-requests")
         self.assertEqual(requests.status_code, 200)

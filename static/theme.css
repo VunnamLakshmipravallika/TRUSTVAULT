@@ -160,6 +160,21 @@ select:focus-visible {
   color: #b8f1df;
 }
 
+.pending-count {
+  display: inline-grid;
+  min-width: 19px;
+  height: 19px;
+  margin-left: 6px;
+  padding: 0 5px;
+  place-items: center;
+  border-radius: 10px;
+  background: #c94e45;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .sidebar-note {
   margin: 32px 3px 0;
   padding: 16px;

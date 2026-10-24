@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TrustVault · Documents</title><link rel="stylesheet" href="/static/style.css">
-  {% if user.role == 'owner' %}<link rel="stylesheet" href="/static/owner-dashboard.css">{% endif %}
-  <link rel="stylesheet" href="/static/theme.css">
+  <title>TrustVault · Documents</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version('style.css')) }}">
+  {% if user.role == 'owner' %}<link rel="stylesheet" href="{{ url_for('static', filename='owner-dashboard.css', v=asset_version('owner-dashboard.css')) }}">{% endif %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css', v=asset_version('theme.css')) }}">
 </head>
 <body>
   <header class="topbar">
@@ -18,7 +18,7 @@
       <p class="eyebrow">WORKSPACE</p><a class="nav-link active" href="/">▦ &nbsp; Documents</a>
       {% if user.role == 'admin' %}
       <a class="nav-link" href="#activity" id="activity-link">◷ &nbsp; Activity log</a>
-      <a class="nav-link" href="#admin-account-requests" id="admin-account-requests-link">♙ &nbsp; Admin requests</a>
+      <a class="nav-link" href="#admin-account-requests" id="admin-account-requests-link">♙ &nbsp; Admin requests <span class="pending-count hidden" data-admin-request-count></span></a>
       {% endif %}
       {% if user.role == 'owner' %}<a class="nav-link" href="#user-login-activity" id="user-login-activity-link">♙ &nbsp; User sign-ins</a>{% endif %}
       <section class="sidebar-note"><span class="shield">✓</span><b>Protected by design</b><p>Every file request is checked against its current document grant.</p></section>
@@ -28,7 +28,7 @@
       <p class="muted">{% if user.role == 'admin' %}You can review document metadata; file contents still require an explicit grant.{% else %}Only you and people explicitly granted access can see each file.{% endif %}</p></div>
       <div class="heading-actions">
         {% if user.role == 'admin' %}<button id="activity-open" class="button outline">◷ &nbsp; Activity log</button>{% endif %}
-        {% if user.role == 'admin' %}<button id="admin-account-requests-open" class="button outline">♙ &nbsp; Admin requests</button>{% endif %}
+        {% if user.role == 'admin' %}<button id="admin-account-requests-open" class="button outline">♙ &nbsp; Admin requests <span class="pending-count hidden" data-admin-request-count></span></button>{% endif %}
         {% if user.role == 'owner' %}<button id="user-login-activity-open" class="button outline">♙ &nbsp; User sign-ins</button>{% endif %}
         {% if user.role == 'owner' %}<button id="upload-open" class="button primary">＋ &nbsp; Upload document</button>{% endif %}
       </div></div>
@@ -94,6 +94,6 @@
   <dialog id="detail-dialog"><div id="detail-content"></div></dialog>
   <div id="toast" role="status"></div>
   <script>window.TRUSTVAULT = {role: {{ user.role|tojson }}, csrf: {{ csrf_token|tojson }}};</script>
-  <script src="/static/app.js"></script>
+  <script src="{{ url_for('static', filename='app.js', v=asset_version('app.js')) }}"></script>
 </body>
 </html>

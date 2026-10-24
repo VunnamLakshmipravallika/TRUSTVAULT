@@ -219,6 +219,7 @@ async function toggleAdminAccountRequests(event) {
   await loadAdminAccountRequests();
 }
 async function loadAdminAccountRequests() {
+  const panel = document.querySelector("#admin-account-requests");
   const tbody = document.querySelector("#admin-account-requests-events");
   const empty = document.querySelector("#admin-account-requests-empty");
   tbody.innerHTML = `<tr><td colspan="4">Loading account requests…</td></tr>`;
@@ -227,6 +228,11 @@ async function loadAdminAccountRequests() {
     const {requests} = await api("/api/admin/account-requests");
     tbody.innerHTML = "";
     empty.classList.toggle("hidden", requests.length !== 0);
+    document.querySelectorAll("[data-admin-request-count]").forEach(count => {
+      count.textContent = requests.length;
+      count.classList.toggle("hidden", requests.length === 0);
+    });
+    if (requests.length) panel.classList.remove("hidden");
     for (const request of requests) {
       const row = document.createElement("tr");
       row.innerHTML = `<td>${escapeHtml(request.username)}</td>
@@ -294,3 +300,4 @@ document.querySelector("#user-login-activity-refresh")?.addEventListener("click"
 document.querySelector("#owner-dashboard-refresh")?.addEventListener("click", loadOwnerDashboard);
 loadDocuments();
 loadOwnerDashboard();
+if (window.TRUSTVAULT.role === "admin") loadAdminAccountRequests();

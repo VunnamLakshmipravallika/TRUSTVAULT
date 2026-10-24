@@ -43,6 +43,14 @@ app.config.update(
 )
 
 
+@app.context_processor
+def inject_static_asset_version():
+    def asset_version(filename):
+        return str((ROOT / "static" / filename).stat().st_mtime_ns)
+
+    return {"asset_version": asset_version}
+
+
 def _load_secret(name, filename):
     configured = os.environ.get(name)
     if configured:
