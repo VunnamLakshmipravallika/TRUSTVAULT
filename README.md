@@ -11,6 +11,8 @@ This privacy-review feature adapts the explainable scoring/report idea from [Tru
 Requires Python 3.10+.
 
 ```sh
+git clone https://github.com/VunnamLakshmipravallika/TRUSTVAULT.git
+cd TRUSTVAULT
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
@@ -18,9 +20,9 @@ python app.py --seed
 python app.py
 ```
 
-Open <http://127.0.0.1:5050>. Port 5000 is commonly occupied by macOS AirPlay/ControlCenter, so TrustVault uses port 5050 by default; set `PORT` to another free port if necessary. The health endpoint is <http://127.0.0.1:5050/health>. The first command creates a local SQLite database, private storage, and a harmless sample document under `instance/`. Do not expose the development server directly to the internet. For deployment, use a production WSGI server behind HTTPS, set `TRUSTVAULT_COOKIE_SECURE=1`, set strong `TRUSTVAULT_SESSION_KEY` and `TRUSTVAULT_AUDIT_KEY` secrets, and persist the instance directory and backups securely.
+The seed command initializes the local SQLite database and demo users, then exits. The next command starts the server. Open <http://127.0.0.1:5050>. Port 5000 is commonly occupied by macOS AirPlay/ControlCenter, so TrustVault uses port 5050 by default; set `PORT` to another free port if necessary. The health endpoint is <http://127.0.0.1:5050/health>. Seeding creates a harmless sample document under `instance/`. Do not expose the development server directly to the internet. For deployment, use a production WSGI server behind HTTPS, set `TRUSTVAULT_COOKIE_SECURE=1`, set strong `TRUSTVAULT_SESSION_KEY` and `TRUSTVAULT_AUDIT_KEY` secrets, and persist the instance directory and backups securely.
 
-When opening the provided workspace rather than cloning the repository, the Git repository and complete application are in its `trustvault/` subfolder. From the workspace parent, run `cd trustvault` before running the commands above. The repository itself contains `app.py`, `document_review.py`, `schema.sql`, `templates/`, `static/`, and `tests/`; run commands from that repository root so Flask can find these files.
+When opening the provided VS Code workspace rather than cloning the repository, the Git repository and complete application are in its `trustvault/` subfolder. From the workspace parent, run `cd trustvault` before running the application commands above. Run commands from the repository root so Flask can find `app.py`, `document_review.py`, `schema.sql`, `templates/`, `static/`, and `tests/`.
 
 ### Troubleshooting
 
@@ -123,4 +125,4 @@ Unauthorized document access uses a not-found response to reduce document-ID enu
 
 ## Submission material
 
-See [THREATS.md](THREATS.md), [PROMPTS.md](PROMPTS.md), and [WRITEUP.md](WRITEUP.md). This repository has Git history. Before submission, configure a valid public GitHub remote, deploy the application, and add the live URL and demo recording.
+See [THREATS.md](THREATS.md), [PROMPTS.md](PROMPTS.md), and [WRITEUP.md](WRITEUP.md). The source repository is [VunnamLakshmipravallika/TRUSTVAULT](https://github.com/VunnamLakshmipravallika/TRUSTVAULT). A public deployment and demo recording are not included yet.

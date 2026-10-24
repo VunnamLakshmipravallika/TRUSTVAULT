@@ -1,21 +1,77 @@
 # TrustVault — project write-up
 
-TrustVault is a secure-by-default document-sharing prototype. Uploaded files are stored under generated server-side filenames outside the web root. Every metadata, permission, and download request checks the current user against the document owner or an explicit per-document grant. Sharing is named and scoped to one document; there is no folder inheritance or public link. Owners may send a short email notification to an existing account when granting access, without emailing the file or creating a bearer link. Authorized readers can also run a local deterministic privacy-pattern review and download a redacted PDF report; document text is not sent to an external AI provider, and the score is not a truth or compliance guarantee.
+**Repository:** [VunnamLakshmipravallika/TRUSTVAULT](https://github.com/VunnamLakshmipravallika/TRUSTVAULT)
+**Status:** Runnable local prototype; deployment and demo recording are not included.
 
-## What is implemented
+## 1. The problem
 
-Authentication with three roles, document upload and search, read/edit grants, owner-only grant/revoke, metadata edits, owner deletion, private download, file validation, admin activity view, CSRF validation, and a chained audit log. Automated tests exercise direct attempts by an ungranted user. The detailed API access table is in [README.md](README.md).
+Companies need to share confidential documents with specific people without accidentally exposing a whole folder or relying on a link that remains usable after access is revoked. They also need an accountable record of successful and refused access, permission changes, and other document activity.
 
-## Permission model in my words
+TrustVault addresses this with named, per-document grants and server-side authorization. It is a security-focused prototype, not a claim of production certification.
 
-Being logged in does not imply access to a document. The owner role can upload; that user owns the document and can manage its grants. A named user can be granted read or edit. A read grant allows metadata and download; edit additionally allows changing name/category. Only the owner can delete or change grants. The viewer role cannot upload or enumerate users. Administrators can inspect workspace metadata and activity, but cannot read/download document contents unless explicitly granted. Revocation removes the grant row, so the next server-side request is denied; it cannot claw back a previously downloaded copy.
+## 2. What works
 
-## Audit design
+- Sign-in with administrator, document-owner, and viewer roles.
+- Owner upload, search/filter, metadata editing, soft deletion, and private file download.
+- Per-document `read` and `edit` grants to named accounts, with owner-controlled grant and revocation.
+- Authorization checks on document routes, including download and review; revocation blocks the next request. A file already downloaded cannot be recalled.
+- File extension/content checks and a 10 MiB upload limit.
+- An administrative activity view and a locally HMAC-chained audit log with SQLite update/delete triggers. The chain detects changes made without the audit key; it does not protect against an attacker controlling the application host and key.
+- Optional SMTP notifications on grants. Email is a notification only, contains no file or bearer download link, and does not itself grant access.
+- Local heuristic privacy scanning for supported PDF, DOCX, and TXT documents, with redacted findings and a downloadable PDF report. The scan is not a compliance certification and does not support image OCR.
+- Automated tests for authorization boundaries, revocation, upload validation, email behavior, audit behavior, and privacy-review output.
 
-Each audit entry commits to the preceding hash and is HMAC-signed using a local secret. SQLite triggers reject update/delete statements on audit rows. The admin endpoint verifies the chain. This provides tamper evidence for ordinary application/database-level changes, not protection against an attacker who controls the host and audit key. For production I would export to independently controlled append-only storage.
+**Roles:** Owners upload and manage their own documents and grants. Viewers have no access unless explicitly granted. Administrators can inspect workspace metadata and audit activity but do not automatically receive document-content access.
 
-## AI use and unfinished work
+## 3. Run locally
 
-The initial implementation was built with AI assistance from the challenge brief. The AI log records the actual work known in this workspace; there is no pre-existing Git history here, so fabricated prior prompt/commit history would be misleading. See [PROMPTS.md](PROMPTS.md) for the honest log and future-entry requirements.
+Requires Python 3.10+ and pip. Commands below are for macOS/Linux; on Windows, activate the virtual environment with `.venv\\Scripts\\activate`.
 
-Not implemented: public deployment, public repository/history, demo video, production user provisioning, MFA, rate limiting, malware scanning, external immutable audit storage, versioning/recovery, and tested disaster recovery. Before evaluation, run the tests, rotate seeded passwords, deploy behind HTTPS, add test evidence and screenshots, and record further prompt corrections in Git history.
+```sh
+git clone https://github.com/VunnamLakshmipravallika/TRUSTVAULT.git
+cd TRUSTVAULT
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python app.py --seed
+python app.py
+```
+
+The seed command initializes the local SQLite database and demo accounts, then exits. Start the server with the next command and open <http://127.0.0.1:5050>. Port 5000 is avoided because it may be occupied by a macOS system service.
+
+Seeded local-only demo accounts:
+
+| Role | Username | Password |
+|---|---|---|
+| Administrator | `admin` | `Admin123!` |
+| Owner | `owner` | `Owner123!` |
+| Viewer | `viewer` | `Viewer123!` |
+| Unauthorised viewer for access-denial demonstrations | `outsider` | `Outside123!` |
+
+Run the tests in another terminal from the repository root:
+
+```sh
+python -m unittest discover -s tests -v
+```
+
+All 16 tests passed in the local verification on 2026-10-24. This is not evidence of a public deployment. Do not use the seeded passwords for a shared or production system.
+
+## 4. AI tools used
+
+ChatGPT was used to help implement and review the Flask application, tests, and documentation, and to troubleshoot the project layout and startup instructions. The AI prompt/review record is in [PROMPTS.md](PROMPTS.md). The implementation and authorization behavior were checked by running the automated tests and exercising the app locally; AI-generated output was not treated as proof by itself.
+
+## 5. What the AI got wrong, and what was corrected
+
+During troubleshooting, an earlier response said the app and tests had been verified, but the workspace files were split: the Git repository was in the `trustvault/` subfolder while the test and review modules, schema, templates, and static assets were outside it. Running tests from the workspace parent failed with `ModuleNotFoundError: No module named 'app'`; importing from the nested folder then failed to find `document_review`.
+
+The missing runtime files were added to the Git repository, and its README now explains the correct repository root and startup commands. Verification from the repository root passed all 16 tests. A separate smoke test with a temporary database verified seeding, health check, owner login, document listing, metadata, and sample download. The local changes were pushed to the repository's `main` branch.
+
+## 6. What is unfinished / limitations
+
+- No public live deployment or five-minute demo recording is provided.
+- Production account administration, MFA, rate limiting, malware scanning, external append-only audit storage, document versioning/recovery, and disaster-recovery testing are not implemented.
+- Real email delivery requires SMTP credentials and real account email addresses; the seeded `.test` addresses cannot receive mail.
+- The local development server is not hardened for direct internet exposure. A real deployment needs HTTPS, secure secrets, protected persistent storage, and operational monitoring.
+- Audit chaining is tamper-evident only while the audit key and application host remain trustworthy.
+
+See [README.md](README.md) for the full endpoint permissions and setup details, and [THREATS.md](THREATS.md) for the threat model and accepted risks.
