@@ -56,7 +56,7 @@ This log is intentionally honest. The implementation work began before this Git 
 - **Prompt:** Add an expiry date and time to owner uploads and make the document content expire at that deadline.
 - **Produced:** A design requiring a timezone-aware persisted expiry, server-side denial at the deadline, deletion of the file and associated database records, audit evidence, and automated tests.
 - **What was wrong / checked:** A UI-only expiry or a check only on download would leave other routes (metadata, review, permissions, or admin listing) able to reach expired data. Also, ordinary file unlink is not a guarantee of forensic erasure from SSD blocks or backups.
-- **What I did instead:** Added expiry to the upload UI and schema migration, normalized the selected device-local time to UTC, enforced expiration in listing and document access, and added startup/request/periodic purge with an audit event and tests for file, row, grant, and review removal. Documented the limits of filesystem deletion and the need for a scheduled cleanup job in production. **Commit:** to be added after implementation is committed.
+- **What I did instead:** Added expiry to the upload UI and schema migration, normalized the selected device-local time to UTC, enforced expiration in listing and document access, and added startup/request/periodic purge with an audit event and tests for file, row, grant, and review removal. Documented the limits of filesystem deletion and the need for a scheduled cleanup job in production. **Commit:** [`ddef191`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/ddef191dea3322536c96853e3ad86b715b3f63c7).
 
 ### Future entries
 
