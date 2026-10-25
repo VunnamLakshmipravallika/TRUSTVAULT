@@ -33,6 +33,7 @@ DATABASE = Path(os.environ.get("TRUSTVAULT_DATABASE", INSTANCE / "trustvault.sql
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_EXTENSIONS = {"pdf", "txt", "png", "jpg", "jpeg", "docx"}
 OWNER_USERNAME = "pravallika"
+ADMIN_INVITE_ENV = "TRUSTVAULT_ADMIN_INVITE_CODE"
 
 app = Flask(__name__)
 app.config.update(
@@ -73,6 +74,33 @@ AUDIT_KEY = _load_secret("TRUSTVAULT_AUDIT_KEY", ".audit-key")
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def valid_admin_invite_code(candidate):
+    configured = os.environ.get(ADMIN_INVITE_ENV, "")
+    if not isinstance(candidate, str) or not 3 <= len(candidate) <= 10:
+        return False
+    if configured:
+        if not 3 <= len(configured) <= 10:
+            return False
+        return hmac.compare_digest(configured.encode(), candidate.encode())
+    try:
+        expected_hash = (INSTANCE / ".admin-invite-hash").read_text(encoding="ascii").strip()
+    except FileNotFoundError:
+        return False
+    candidate_hash = hashlib.sha256(candidate.encode()).hexdigest()
+    return hmac.compare_digest(expected_hash, candidate_hash)
+
+
+def configure_admin_invite_code(code):
+    if not isinstance(code, str) or not 3 <= len(code) <= 10:
+        raise ValueError("Admin invitation code must be between 3 and 10 characters.")
+    path = INSTANCE / ".admin-invite-hash"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    if hasattr(os, "fchmod"):
+        os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="ascii") as stream:
+        stream.write(hashlib.sha256(code.encode()).hexdigest())
 
 
 def db():
@@ -573,8 +601,9 @@ def register():
     normalized_username = username.lower()
     if normalized_username == OWNER_USERNAME:
         return jsonify(error="That username is reserved for the TrustVault owner account."), 409
-    account_role = "viewer"
-    account_status = "pending" if requested_role == "admin" else "active"
+    invited_admin = requested_role == "admin" and valid_admin_invite_code(data.get("admin_invite_code"))
+    account_role = "admin" if invited_admin else "viewer"
+    account_status = "active" if requested_role == "viewer" or invited_admin else "pending"
     try:
         db().execute(
             """INSERT INTO users
@@ -590,7 +619,10 @@ def register():
                 account_status,
             ),
         )
-        action = "account.admin_access_requested" if requested_role == "admin" else "account.registered"
+        if invited_admin:
+            action = "account.admin_registered_by_invite"
+        else:
+            action = "account.admin_access_requested" if requested_role == "admin" else "account.registered"
         audit(None, action, details={"username": normalized_username, "requested_role": requested_role})
     except sqlite3.IntegrityError:
         db().rollback()
@@ -1198,7 +1230,9 @@ def not_found(_error):
     return jsonify(error="not_found"), 404
 
 
-def seed():
+def seed(admin_password):
+    if not isinstance(admin_password, str) or not 12 <= len(admin_password) <= 128:
+        raise ValueError("The seeded Admin password must be between 12 and 128 characters.")
     initialize()
     connection = sqlite3.connect(DATABASE)
     owner = connection.execute(
@@ -1210,7 +1244,7 @@ def seed():
         connection.close()
         raise RuntimeError("Configure the single owner with `python app.py --configure-owner` before seeding.")
     users = [
-        ("admin", "Administrator", "admin", "Admin123!", "admin@example.test"),
+        ("admin", "Administrator", "admin", admin_password, "admin@example.test"),
         ("viewer", "Victor Viewer", "viewer", "Viewer123!", "viewer@example.test"),
         ("outsider", "Oscar Outsider", "viewer", "Outside123!", "outsider@example.test"),
     ]
@@ -1222,6 +1256,17 @@ def seed():
                VALUES (?, ?, ?, ?, ?, ?, ?, 'active')""",
             (username, display_name, role, generate_password_hash(password), now(), email, role),
         )
+        if username == "admin":
+            admin = connection.execute(
+                "SELECT password_hash FROM users WHERE username = ? COLLATE NOCASE",
+                (username,),
+            ).fetchone()
+            if not check_password_hash(admin[0], password):
+                connection.execute(
+                    """UPDATE users SET password_hash = ?, auth_version = auth_version + 1
+                       WHERE username = ? COLLATE NOCASE""",
+                    (generate_password_hash(password), username),
+                )
         configured_email = os.environ.get(f"TRUSTVAULT_EMAIL_{username.upper()}")
         if configured_email:
             connection.execute("UPDATE users SET email = ? WHERE username = ?",
@@ -1267,6 +1312,9 @@ def production_bootstrap():
         )
     if not 12 <= len(admin_password) <= 128:
         raise ValueError("TRUSTVAULT_ADMIN_PASSWORD must be between 12 and 128 characters.")
+    invite_code = os.environ.get(ADMIN_INVITE_ENV)
+    if invite_code and not 3 <= len(invite_code) <= 10:
+        raise ValueError(f"{ADMIN_INVITE_ENV} must be between 3 and 10 characters.")
     initialize()
     connection = sqlite3.connect(DATABASE)
     try:
@@ -1300,11 +1348,24 @@ if __name__ == "__main__":
         os.environ["TRUSTVAULT_OWNER_PASSWORD"] = password
         initialize()
         print(f"Owner account configured for {OWNER_USERNAME}.")
+    elif "--configure-admin-invite" in sys.argv:
+        invitation = getpass("Set a private Admin invitation code (3–10 characters): ")
+        confirmation = getpass("Confirm the Admin invitation code: ")
+        if invitation != confirmation:
+            raise SystemExit("Codes do not match; the Admin invitation was not changed.")
+        configure_admin_invite_code(invitation)
+        print("Admin invitation code configured. The code itself was not stored.")
     elif "--production-bootstrap" in sys.argv:
         production_bootstrap()
         print("Production bootstrap complete; no demo users or demo documents were created.")
     elif "--seed" in sys.argv:
-        seed()
+        admin_password = os.environ.get("TRUSTVAULT_ADMIN_PASSWORD")
+        if not admin_password:
+            admin_password = getpass("Set the local Admin password (12–128 characters): ")
+            confirmation = getpass("Confirm the local Admin password: ")
+            if admin_password != confirmation:
+                raise SystemExit("Passwords do not match; demo accounts were not seeded.")
+        seed(admin_password)
         print("Database initialized. Demo users: admin, configured owner, viewer, outsider.")
     else:
         initialize()

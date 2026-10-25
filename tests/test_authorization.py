@@ -21,6 +21,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
             os.environ,
             {
                 "TRUSTVAULT_OWNER_PASSWORD": "ownerpass-test-123",
+                "TRUSTVAULT_ADMIN_INVITE_CODE": "",
             },
         )
         self.owner_settings.start()
@@ -259,7 +260,7 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         self.assertEqual(approved_login.status_code, 200)
         self.assertTrue(approved_login.json["identity_required"])
 
-    def test_public_admin_registration_cannot_bypass_existing_admin_approval(self):
+    def test_arbitrary_invite_field_cannot_bypass_existing_admin_approval(self):
         with self.client.session_transaction() as session:
             session["csrf_token"] = "test-csrf"
         password = "pending-admin-password-123"
@@ -286,6 +287,67 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         )
         self.assertEqual(blocked_login.status_code, 403)
         self.assertEqual(blocked_login.json["error"], "account_pending_approval")
+
+    def test_valid_admin_invite_activates_account_that_can_sign_in(self):
+        invitation = "A9x7Q2mP4b"
+        password = "invited-admin-password-123"
+        with patch.dict(os.environ, {"TRUSTVAULT_ADMIN_INVITE_CODE": invitation}):
+            with self.client.session_transaction() as session:
+                session["csrf_token"] = "test-csrf"
+            registration = self.client.post(
+                "/api/register",
+                json={
+                    "username": "invited-admin",
+                    "display_name": "Invited Admin",
+                    "password": password,
+                    "password_confirmation": password,
+                    "requested_role": "admin",
+                    "admin_invite_code": invitation,
+                },
+                headers={"X-CSRF-Token": "test-csrf"},
+            )
+            self.assertEqual(registration.status_code, 201)
+            self.assertFalse(registration.json["pending_approval"])
+            self.assertEqual(registration.json["user"]["role"], "admin")
+            self.assertEqual(registration.json["user"]["account_status"], "active")
+            self.assertTrue(self.client.get("/?registered=admin-active").status_code == 200)
+
+            login = self.client.post(
+                "/api/login",
+                json={"username": "invited-admin", "password": password, "role": "admin"},
+                headers={"X-CSRF-Token": "test-csrf"},
+            )
+            self.assertEqual(login.status_code, 200)
+            self.assertTrue(login.json["identity_required"])
+            with trustvault.app.app_context():
+                self.assertTrue(trustvault.db().execute(
+                    "SELECT 1 FROM audit_events WHERE action = 'account.admin_registered_by_invite'"
+                ).fetchone())
+
+    def test_admin_invite_configuration_stores_only_hash_and_verifies_it(self):
+        invitation = "P4m8X2qR9z"
+        trustvault.configure_admin_invite_code(invitation)
+        invite_file = trustvault.INSTANCE / ".admin-invite-hash"
+        self.assertNotEqual(invite_file.read_text(encoding="ascii"), invitation)
+        self.assertEqual(len(invite_file.read_text(encoding="ascii")), 64)
+        self.assertTrue(trustvault.valid_admin_invite_code(invitation))
+        self.assertFalse(trustvault.valid_admin_invite_code(invitation + "wrong"))
+        for invalid in ("ab", "this-code-is-too-long"):
+            with self.subTest(invalid=invalid):
+                self.assertFalse(trustvault.valid_admin_invite_code(invalid))
+                with self.assertRaisesRegex(ValueError, "between 3 and 10"):
+                    trustvault.configure_admin_invite_code(invalid)
+
+    def test_seed_requires_and_sets_a_private_admin_password(self):
+        with self.assertRaisesRegex(ValueError, "between 12 and 128"):
+            trustvault.seed("short")
+        password = "private-local-admin-password-123"
+        trustvault.seed(password)
+        with trustvault.app.app_context():
+            account = trustvault.db().execute(
+                "SELECT password_hash FROM users WHERE username = 'admin'"
+            ).fetchone()
+            self.assertTrue(trustvault.check_password_hash(account["password_hash"], password))
 
     def test_production_bootstrap_creates_only_configured_owner_and_admin(self):
         admin_password = "production-admin-password-123"
@@ -528,8 +590,8 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
         registration_page = self.client.get("/register")
         self.assertIn(b'name="requested_role" value="viewer"', registration_page.data)
         self.assertIn(b'name="requested_role" value="admin"', registration_page.data)
-        self.assertIn(b"existing administrator must approve", registration_page.data)
-        self.assertNotIn(b"admin_invite_code", registration_page.data)
+        self.assertIn(b"private Admin invitation code", registration_page.data)
+        self.assertIn(b'name="admin_invite_code"', registration_page.data)
 
     def test_authenticated_user_cannot_create_an_additional_account(self):
         self.login("owner", "ownerpass-test-123")

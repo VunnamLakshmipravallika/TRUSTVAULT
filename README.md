@@ -21,7 +21,7 @@ python app.py --seed
 python app.py
 ```
 
-The owner setup command asks for a password twice without echoing it; use 12–128 characters and keep it out of shell history and source control. It creates or updates the single owner account and stores only a password hash in the database. The seed command initializes the other demo users, then exits. The next command starts the server. Open <http://127.0.0.1:5050>. Port 5000 is commonly occupied by macOS AirPlay/ControlCenter, so TrustVault uses port 5050 by default; set `PORT` to another free port if necessary. The health endpoint is <http://127.0.0.1:5050/health>. Seeding creates a harmless sample document under `instance/`. Do not expose the development server directly to the internet. For deployment, configure the same owner password in the host's private environment settings or use the interactive owner setup against the persistent database, use a production WSGI server behind HTTPS, set `TRUSTVAULT_COOKIE_SECURE=1`, set strong `TRUSTVAULT_SESSION_KEY` and `TRUSTVAULT_AUDIT_KEY` secrets, and persist the instance directory and backups securely.
+The owner setup command asks for a password twice without echoing it; use 12–128 characters and keep it out of shell history and source control. It creates or updates the single owner account and stores only a password hash in the database. The seed command also prompts twice for a private local Admin password (12–128 characters) and replaces the seeded Admin password when run again; it initializes the other demo users, then exits. Alternatively provide `TRUSTVAULT_ADMIN_PASSWORD` privately in the environment. The next command starts the server. Open <http://127.0.0.1:5050>. Port 5000 is commonly occupied by macOS AirPlay/ControlCenter, so TrustVault uses port 5050 by default; set `PORT` to another free port if necessary. The health endpoint is <http://127.0.0.1:5050/health>. Seeding creates a harmless sample document under `instance/`. Do not expose the development server directly to the internet. For deployment, configure the same owner password in the host's private environment settings or use the interactive owner setup against the persistent database, use a production WSGI server behind HTTPS, set `TRUSTVAULT_COOKIE_SECURE=1`, set strong `TRUSTVAULT_SESSION_KEY` and `TRUSTVAULT_AUDIT_KEY` secrets, and persist the instance directory and backups securely.
 
 When opening the provided VS Code workspace rather than cloning the repository, the Git repository and complete application are in its `trustvault/` subfolder. From the workspace parent, run `cd trustvault` before running the application commands above. Run commands from the repository root so Flask can find `app.py`, `document_review.py`, `schema.sql`, `templates/`, `static/`, and `tests/`.
 
@@ -34,22 +34,22 @@ When opening the provided VS Code workspace rather than cloning the repository, 
 
 ### Seeded demo accounts
 
-| Role | Username | Password |
+| Role | Username | Password setup |
 |---|---|---|
-| Administrator | `admin` | `Admin123!` |
+| Administrator | `admin` | Set privately by `python app.py --seed` |
 | Document owner | `pravallika` | Set interactively with `python app.py --configure-owner` |
-| Viewer | `viewer` | `Viewer123!` |
-| Unauthorised viewer for demos/tests | `outsider` | `Outside123!` |
+| Viewer | `viewer` | Local demo account; not for deployment |
+| Unauthorised viewer for demos/tests | `outsider` | Local demo account; not for deployment |
 
-Admin and viewer seed accounts are for local evaluation only. The owner account is not seeded with a public default password.
+All seeded accounts are for local evaluation only. Admin passwords are not published; the owner account is not seeded with a public default password.
 
 ## Deploying on Render
 
-The repository includes a Render Blueprint in `render.yaml`. In Render, create a Blueprint from this repository and provide private values for `TRUSTVAULT_OWNER_PASSWORD` and `TRUSTVAULT_ADMIN_PASSWORD` (each 12–128 characters), plus the generated public URL for `TRUSTVAULT_BASE_URL`. Render generates the session and audit keys. The start command runs a production bootstrap that creates only the configured Owner and Admin accounts; it does not create the publicly documented local demo accounts or sample document. The bootstrap is safe to run on restarts and does not reset an existing Admin password.
+The repository includes a Render Blueprint in `render.yaml`. In Render, create a Blueprint from this repository and provide private values for `TRUSTVAULT_OWNER_PASSWORD` and `TRUSTVAULT_ADMIN_PASSWORD` (each 12–128 characters), plus the generated public URL for `TRUSTVAULT_BASE_URL`. Render generates the session and audit keys. Optionally configure `TRUSTVAULT_ADMIN_INVITE_CODE` as a private value to let invited users activate Admin accounts during registration. The start command runs a production bootstrap that creates only the configured Owner and Admin accounts; it does not create the publicly documented local demo accounts or sample document. The bootstrap is safe to run on restarts and does not reset an existing Admin password.
 
 The Blueprint uses one Gunicorn worker and a persistent disk for SQLite, uploaded files, and local keys. Persistent disks may require a paid Render plan; confirm current hosting costs before deployment. Do not remove the disk or run multiple app instances against the SQLite database. After deployment, open the generated HTTPS URL in a private window, verify `/health`, sign in as the configured Admin and Owner, and test upload, grant, download, revocation, and expiry. Keep the host's secret values private. No live deployment is currently claimed by this repository.
 
-The local `--seed` command is intentionally separate and must not be used in a public deployment because it creates demo accounts with published passwords.
+The local `--seed` command is intentionally separate and must not be used in a public deployment because it creates demo accounts. Its Admin password is private per local setup; the other demo accounts are not production credentials.
 
 ### Role-based sign in
 
@@ -57,7 +57,9 @@ Choose Admin or Viewer on the sign-in page; the selected role is checked against
 
 ### Create an account
 
-People who do not have an account can use **Create an account** and choose Viewer or Admin. Viewer accounts activate immediately and start with no document permissions; an owner must grant access to each document. Admin registration creates a pending request, not an active administrator. An existing active Admin must approve the request from the **Admin requests** panel before the applicant can sign in as Admin. A pending applicant cannot review their own request. Approval and rejection are audited; rejected accounts remain unable to sign in. Owner accounts cannot self-register. The server assigns roles and statuses regardless of client-supplied role fields. Email verification, password recovery, and registration rate limiting are not implemented.
+People who do not have an account can use **Create an account** and choose Viewer or Admin. Viewer accounts activate immediately and start with no document permissions; an owner must grant access to each document. An Admin applicant who enters the private invitation code activates immediately and can sign in as Admin. Without a valid code, registration creates a pending request that an existing active Admin must approve from the **Admin requests** panel. A pending applicant cannot review their own request. Invitation activation, approval, and rejection are audited; rejected accounts remain unable to sign in. Owner accounts cannot self-register. The server assigns roles and statuses regardless of client-supplied role fields.
+
+Configure a local invitation by running `python app.py --configure-admin-invite`; it prompts twice and stores only a SHA-256 digest under the private instance directory. Alternatively set `TRUSTVAULT_ADMIN_INVITE_CODE` in the process environment or the host's private environment settings. The code must be 3–10 characters. Short codes are substantially easier to guess; use all 10 characters, choose a random mix of letters and numbers, and share it privately. Treat it like a credential: never commit or paste it into chat, and rotate it immediately if exposed. This is a reusable shared code; rotation prevents future use of the old code but does not deactivate Admin accounts already created with it. Registration rate limiting is not implemented, so a short code is not recommended for a public deployment.
 
 ## Email notifications for access grants
 
@@ -103,7 +105,7 @@ Uploads are limited to 10 MiB and validated against an allowlist and basic file 
 python -m unittest discover -s tests -v
 ```
 
-The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; verify admin/viewer post-login identity gating and owner-only sign-in visibility; test viewer registration and login, pending admin requests, approval/rejection, admin-only decisions, input validation, and CSRF protection; test expiry purge; and check review output redaction and PDF generation. GitHub Actions runs this suite and checks JavaScript syntax for pushes and pull requests to `main`.
+The tests prove ungranted users cannot list, read, download, edit, delete, or review another user's file; test read-only grants; verify immediate revocation and browser sign-out; validate upload rejection; test successful and failed email-notification handling without turning email into an access link; verify admin/viewer post-login identity gating and owner-only sign-in visibility; test viewer registration and login, valid and invalid Admin invitation behavior, pending Admin approval/rejection, admin-only decisions, input validation, and CSRF protection; test expiry purge; and check review output redaction and PDF generation. GitHub Actions runs this suite and checks JavaScript syntax for pushes and pull requests to `main`.
 
 ## API
 

@@ -21,6 +21,8 @@ services:
         sync: false
       - key: TRUSTVAULT_ADMIN_PASSWORD
         sync: false
+      - key: TRUSTVAULT_ADMIN_INVITE_CODE
+        sync: false
       - key: TRUSTVAULT_BASE_URL
         sync: false
       - key: TRUSTVAULT_SESSION_KEY

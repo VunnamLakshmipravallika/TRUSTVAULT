@@ -17,11 +17,12 @@
       <p class="eyebrow">PRIVATE DOCUMENT WORKSPACE</p>
       <h1>Welcome back</h1><p class="muted">Sign in to securely access your documents.</p>
       {% if registered == 'viewer' %}<p class="success-message" role="status">Your viewer account is ready. Sign in to continue.</p>{% endif %}
+      {% if registered == 'admin-active' %}<p class="success-message" role="status">Your Admin account is active. Select Admin and sign in with the account you just created.</p>{% endif %}
       {% if registered == 'admin-pending' %}<p class="success-message" role="status">Your Admin access request was sent. Sign in with an existing active Admin account and open Admin requests to approve it. This pending account cannot review its own request.</p>{% endif %}
       <fieldset class="role-choice">
         <legend>Choose your role</legend>
-        <label><input type="radio" name="role" value="admin"><span>Admin</span></label>
-        <label><input type="radio" name="role" value="viewer" checked><span>Viewer</span></label>
+        <label><input type="radio" name="role" value="admin" {% if registered == 'admin-active' %}checked{% endif %}><span>Admin</span></label>
+        <label><input type="radio" name="role" value="viewer" {% if registered != 'admin-active' %}checked{% endif %}><span>Viewer</span></label>
         <label><input type="radio" name="role" value="owner"><span>Owner</span></label>
       </fieldset>
       <form id="login-form">

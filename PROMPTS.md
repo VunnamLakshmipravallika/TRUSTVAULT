@@ -128,6 +128,26 @@ This log is intentionally honest. The implementation work began before this Git 
 - **What was wrong / checked:** Immediate Admin activation without an invitation would let any public registrant gain administrator privileges. I preserved the existing server-side approval guard instead of weakening it.
 - **What I did instead:** Restored the simple approve/reject-only flow, retained role-escalation regression coverage, and updated setup, deployment, threat, and submission docs. Verified all 38 tests pass and browser-checked the Admin registration copy, absence of any invite field, and zero horizontal overflow at a 390px viewport. **Commit:** [`63bec6f`](https://github.com/VunnamLakshmipravallika/TRUSTVAULT/commit/63bec6f3e91b09f8c19c5dfb673f5fd39dcf7071).
 
+### 2026-10-24 — Restoring private Admin invitation activation
+
+- **Prompt:** The user asked to add the Admin invitation code again after clarifying that they expect to create an account and then sign in.
+- **Produced:** Admin registration accepts a configured private code for immediate activation; a missing or invalid code still leaves the request pending for existing-Admin approval.
+- **What was wrong / checked:** A reusable shared code can grant Admin registration to anyone who obtains it, so enabling unrestricted self-promotion would be unsafe. The existing approval path must remain as a fallback, and the supplied code must not be stored or written to audit logs.
+- **What I did instead:** Restored constant-time comparison, local hash-only setup, private environment configuration, invitation-field visibility only for Admin signup, active-account sign-in messaging, and regression tests for successful code use and arbitrary client-supplied values. All 40 tests passed; source diagnostics and `git diff --check` were clean. A high-entropy local code was generated at the user's request and only its 64-character SHA-256 digest was persisted with mode 0600; the code is not in source control.
+
+### 2026-10-24 — Shortening Admin invitation codes
+
+- **Prompt:** The user requested that the Admin invitation code be 3–10 characters long.
+- **Produced:** Updated environment/configuration validation and the registration field to accept 3–10 characters, with boundary tests.
+- **Risk noted:** Short reusable codes are substantially easier to guess, especially because registration rate limiting is not implemented; documented the risk and recommendation to use all 10 characters only in a controlled environment.
+- **Verification:** Full test suite and live registration flow checked after implementation.
+
+### 2026-10-25 — Keeping the seeded Admin password private
+
+- **Prompt:** The user selected the published Admin demo password and asked to keep it private.
+- **Produced:** Removed the Admin password from README/submission tables and removed the fixed Admin password from source seeding. Local seeding now prompts twice without echo, requires 12–128 characters, updates the seeded Admin hash, and invalidates that account's existing sessions if the password changes.
+- **Verification:** Added a seed password test; run the full suite before completion. Older Git history may still contain the previously published value, so rotate any account that used it before relying on that account.
+
 ### Future entries
 
 Continue adding dated entries as you use AI. At least two entries should cover authorization, access control, or the audit trail. Each entry must state the prompt, actual output, a specific defect or verification result, and the real commit URL/SHA for any correction. Do not invent dates, prompt details, or commit links.
