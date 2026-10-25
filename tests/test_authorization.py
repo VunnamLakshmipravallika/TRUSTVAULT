@@ -849,20 +849,46 @@ class TrustVaultAuthorizationTests(unittest.TestCase):
 
     def test_granted_viewer_can_download_but_cannot_change_or_grant(self):
         document_id = self.upload_as_owner()
+        viewer_client = trustvault.app.test_client()
+        with viewer_client.session_transaction() as session:
+            session["csrf_token"] = "viewer-csrf"
+        viewer_login = viewer_client.post(
+            "/api/login",
+            json={"username": "viewer", "password": "viewerpass", "role": "viewer"},
+            headers={"X-CSRF-Token": "viewer-csrf"},
+        )
+        self.assertEqual(viewer_login.status_code, 200)
+        viewer_csrf = viewer_login.json["csrf_token"]
+        viewer_identity = viewer_client.post(
+            "/api/session/user-id",
+            json={"user_id": "test-viewer"},
+            headers={"X-CSRF-Token": viewer_csrf},
+        )
+        self.assertEqual(viewer_identity.status_code, 200)
+        self.assertEqual(viewer_client.get("/api/documents").json["documents"], [])
+        self.assertEqual(viewer_client.get(f"/api/documents/{document_id}/download").status_code, 404)
+
         self.assertEqual(self.client.post(
             f"/api/documents/{document_id}/permissions",
             json={"username": "viewer", "permission": "read"},
             headers={"X-CSRF-Token": self.csrf()},
         ).status_code, 201)
-        self.login("viewer", "viewerpass")
-        response = self.client.get(f"/api/documents/{document_id}/download")
+        listing = viewer_client.get("/api/documents")
+        self.assertEqual([doc["id"] for doc in listing.json["documents"]], [document_id])
+        response = viewer_client.get(f"/api/documents/{document_id}/download")
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b"%PDF-1.4\nprivate document")
         response.close()
-        self.assertEqual(self.client.patch(f"/api/documents/{document_id}", json={"name": "Changed"},
-                                           headers={"X-CSRF-Token": self.csrf()}).status_code, 404)
-        self.assertEqual(self.client.post(f"/api/documents/{document_id}/permissions",
-                                          json={"username": "outsider", "permission": "read"},
-                                          headers={"X-CSRF-Token": self.csrf()}).status_code, 404)
+        self.assertEqual(viewer_client.patch(
+            f"/api/documents/{document_id}",
+            json={"name": "Changed"},
+            headers={"X-CSRF-Token": viewer_csrf},
+        ).status_code, 404)
+        self.assertEqual(viewer_client.post(
+            f"/api/documents/{document_id}/permissions",
+            json={"username": "outsider", "permission": "read"},
+            headers={"X-CSRF-Token": viewer_csrf},
+        ).status_code, 404)
 
     def test_grant_sends_email_to_registered_recipient_without_sharing_a_link(self):
         document_id = self.upload_as_owner()

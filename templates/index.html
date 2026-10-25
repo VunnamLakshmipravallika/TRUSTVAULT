@@ -25,7 +25,7 @@
     </aside>
     <section class="content">
       <div class="heading-row"><div><p class="eyebrow">YOUR SECURE WORKSPACE</p><h1>Documents</h1>
-      <p class="muted">{% if user.role == 'admin' %}You can review document metadata; file contents still require an explicit grant.{% else %}Only you and people explicitly granted access can see each file.{% endif %}</p></div>
+      <p class="muted">{% if user.role == 'admin' %}You can review document metadata; file contents still require an explicit grant.{% elif user.role == 'owner' %}Uploads stay private. Open a document and grant the named Viewer read access when it is ready to share.{% else %}Documents appear here after their owner grants you access. Open a shared document to download it.{% endif %}</p></div>
       <div class="heading-actions">
         {% if user.role == 'admin' %}<button id="activity-open" class="button outline">◷ &nbsp; Activity log</button>{% endif %}
         {% if user.role == 'admin' %}<button id="admin-account-requests-open" class="button outline">♙ &nbsp; Admin requests <span class="pending-count hidden" data-admin-request-count></span></button>{% endif %}
@@ -59,7 +59,7 @@
       </section>
       <div class="table-wrap"><table><thead><tr><th>DOCUMENT</th><th>CATEGORY</th><th>OWNER</th><th>ACCESS</th><th>ADDED</th><th></th></tr></thead>
         <tbody id="documents"></tbody></table>
-        <div id="empty" class="empty hidden"><div>▤</div><b>No documents found</b><p>Upload a document or adjust your search.</p></div>
+        <div id="empty" class="empty hidden"><div>▤</div><b>No documents found</b><p>{% if user.role == 'viewer' %}Ask the document owner to grant your account read access.{% elif user.role == 'owner' %}Upload a document, then open it and use Grant access to share it with a Viewer.{% else %}No documents match your search.{% endif %}</p></div>
       </div>
       {% if user.role == 'admin' %}
       <section id="activity" class="activity-panel hidden"><div class="panel-heading"><div><p class="eyebrow">ADMINISTRATION</p><h2>Activity log</h2></div><span id="chain-status" class="badge"></span></div><div id="activity-events"></div></section>

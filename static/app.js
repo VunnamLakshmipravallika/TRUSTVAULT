@@ -87,7 +87,7 @@ async function openDocument(id) {
       ${doc.permission === "edit" ? `<button class="button outline" id="edit-document">Edit details</button>` : ""}</div>
       ${doc.permission !== "admin_metadata" ? `<section class="review-tools"><button class="button outline" id="review-document">◈ &nbsp; Review document privacy</button><p class="muted">Local pattern checks only. The file is not sent to an AI service.</p><div id="review-result"></div></section>` : ""}
       ${grants.length ? `<section class="grant-list"><h3>People with access</h3>${grants.map(g => `<div class="grant"><span>${escapeHtml(g.display_name)} <small>${escapeHtml(g.username)}</small></span><span>${escapeHtml(g.permission)}</span>${window.TRUSTVAULT.role === "owner" ? `<button data-revoke="${escapeHtml(g.username)}" class="text-button danger">Revoke</button>` : ""}</div>`).join("")}</section>` : ""}
-      ${window.TRUSTVAULT.role === "owner" ? `<form id="grant-form" class="grant-form"><h3>Grant access &amp; notify</h3><select name="username" required></select><select name="permission"><option value="read">Read only</option><option value="edit">Can edit</option></select><label class="notify-option"><input name="notify" type="checkbox" checked><span>Email the recipient about this grant</span></label><button class="button primary">Grant access</button></form><button class="text-button danger delete-document" id="delete-document">Delete document</button>` : ""}`;
+      ${window.TRUSTVAULT.role === "owner" ? `<form id="grant-form" class="grant-form"><h3>Grant access &amp; notify</h3><select name="username" required><option value="" selected disabled>Choose an account</option></select><select name="permission"><option value="read">Read only</option><option value="edit">Can edit</option></select><label class="notify-option"><input name="notify" type="checkbox" checked><span>Email the recipient about this grant</span></label><button class="button primary">Grant access</button><p class="muted grant-help">Choose a Viewer account; Read only allows them to view and download this file.</p></form><button class="text-button danger delete-document" id="delete-document">Delete document</button>` : ""}`;
     document.querySelector("#detail-dialog").showModal();
     if (doc.permission !== "admin_metadata") {
       content.querySelector("#review-document").addEventListener("click", async (event) => {
@@ -114,7 +114,12 @@ async function openDocument(id) {
     if (window.TRUSTVAULT.role === "owner") {
       const {users} = await api("/api/users");
       const select = content.querySelector('select[name="username"]');
-      select.innerHTML = users.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.display_name)} · ${escapeHtml(u.email || "No email registered")}</option>`).join("");
+      select.innerHTML = `<option value="" selected disabled>Choose a recipient</option>${users.map(u => `<option value="${escapeHtml(u.username)}">${escapeHtml(u.display_name)} · @${escapeHtml(u.username)} · ${escapeHtml(u.email || "No email registered")}</option>`).join("")}`;
+      if (users.length === 0) {
+        select.innerHTML = `<option value="" selected disabled>No active accounts available</option>`;
+        content.querySelector("#grant-form button").disabled = true;
+        content.querySelector(".grant-help").textContent = "Create a Viewer account first, or approve its pending account request, then refresh this document.";
+      }
       content.querySelector("#grant-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
